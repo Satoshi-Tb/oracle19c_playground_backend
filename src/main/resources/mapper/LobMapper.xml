@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.dbperf.mapper.LobMapper">
+
+    <insert id="insertHeader"
+            parameterType="com.example.dbperf.model.LobHeader"
+            useGeneratedKeys="true"
+            keyProperty="id"
+            keyColumn="ID">
+        INSERT INTO T_LOB_HEADER (
+            TEXT,
+            TEXT_LEN,
+            FRAGMENT_COUNT
+        ) VALUES (
+            #{text,jdbcType=CLOB},
+            #{textLen},
+            #{fragmentCount}
+        )
+    </insert>
+
+    <insert id="insertDetail"
+            parameterType="com.example.dbperf.model.LobDetail"
+            useGeneratedKeys="true"
+            keyProperty="id"
+            keyColumn="ID">
+        INSERT INTO T_LOB_DETAIL (
+            HEADER_ID,
+            NO,
+            FRAGMENT,
+            FRAGMENT_LEN,
+            MEMO
+        ) VALUES (
+            #{headerId},
+            #{no},
+            #{fragment,jdbcType=CLOB},
+            #{fragmentLen},
+            #{memo}
+        )
+    </insert>
+
+    <update id="updateHeader"
+            parameterType="com.example.dbperf.model.LobHeader">
+        UPDATE T_LOB_HEADER
+        SET
+            TEXT = #{text,jdbcType=CLOB},
+            TEXT_LEN = #{textLen},
+            FRAGMENT_COUNT = #{fragmentCount}
+        WHERE
+            ID = #{id}
+    </update>
+
+    <update id="updateDetail"
+            parameterType="com.example.dbperf.model.LobDetail">
+        UPDATE T_LOB_DETAIL
+        SET
+            NO = #{no},
+            FRAGMENT = FRAGMENT || TO_CLOB('=>') ||
+                #{fragment,jdbcType=CLOB,typeHandler=com.example.dbperf.typehandler.OracleClobStringTypeHandler},
+            FRAGMENT_LEN = #{fragmentLen},
+            MEMO = #{memo}
+        WHERE
+            ID = #{id}
+    </update>
+</mapper>
