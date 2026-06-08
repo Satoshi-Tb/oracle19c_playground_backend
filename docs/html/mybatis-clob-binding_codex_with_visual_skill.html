@@ -1359,6 +1359,11 @@ detail.setMemo("MyBatis updated sample data");</code></pre>
     </main>
   </div>
 
+  <!-- ESM import は integrity 属性を直接記述できないため modulepreload で SRI を適用する -->
+  <link rel="modulepreload"
+        href="https://cdn.jsdelivr.net/npm/mermaid@10.9.6/dist/mermaid.esm.min.mjs"
+        integrity="sha384-4tHk4FnPsmqHebWTP/eLUS+pRkU0tZWjaIpV8oCwjsoxEr3xXXZcL5jG7qI2HIsu"
+        crossorigin="anonymous">
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.9.6/dist/mermaid.esm.min.mjs";
 
