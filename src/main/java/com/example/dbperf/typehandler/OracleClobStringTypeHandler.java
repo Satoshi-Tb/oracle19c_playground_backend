@@ -1,13 +1,9 @@
 package com.example.dbperf.typehandler;
 
-import java.io.StringReader;
-import java.sql.CallableStatement;
-import java.sql.Clob;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import org.apache.ibatis.type.BaseTypeHandler;
+import org.apache.ibatis.type.ClobTypeHandler;
 import org.apache.ibatis.type.JdbcType;
 import org.apache.ibatis.type.MappedJdbcTypes;
 import org.apache.ibatis.type.MappedTypes;
@@ -20,12 +16,13 @@ import oracle.jdbc.OraclePreparedStatement;
  * MyBatis標準のClobTypeHandlerはPreparedStatement#setCharacterStreamを使用する。
  * その場合、Oracle JDBCがSQL式中のバインド変数をLONGとして扱い、
  * CLOB連結時にORA-01461が発生するケースがある。
- * このクラスはOracle JDBCのCLOB用APIを優先して使用し、
- * LONGではなくCLOBとしてバインドさせる目的で作成した。
+ * このクラスはClobTypeHandlerを拡張し、読み取り処理とOracle JDBC以外の書き込み処理は
+ * 標準実装を利用しつつ、Oracle JDBCの場合だけCLOB用APIを優先して使用する。
+ * これにより、LONGではなくCLOBとしてバインドさせる目的で作成した。
  */
 @MappedTypes(String.class)
 @MappedJdbcTypes(JdbcType.CLOB)
-public class OracleClobStringTypeHandler extends BaseTypeHandler<String> {
+public class OracleClobStringTypeHandler extends ClobTypeHandler {
 
     @Override
     public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType)
@@ -36,26 +33,7 @@ public class OracleClobStringTypeHandler extends BaseTypeHandler<String> {
             return;
         }
 
-        // OraclePreparedStatementとしてunwrapできない場合は、JDBC標準APIでCLOBとして渡す。
-        ps.setClob(i, new StringReader(parameter), parameter.length());
-    }
-
-    @Override
-    public String getNullableResult(ResultSet rs, String columnName) throws SQLException {
-        return toString(rs.getClob(columnName));
-    }
-
-    @Override
-    public String getNullableResult(ResultSet rs, int columnIndex) throws SQLException {
-        return toString(rs.getClob(columnIndex));
-    }
-
-    @Override
-    public String getNullableResult(CallableStatement cs, int columnIndex) throws SQLException {
-        return toString(cs.getClob(columnIndex));
-    }
-
-    private String toString(Clob clob) throws SQLException {
-        return clob == null ? null : clob.getSubString(1, (int) clob.length());
+        // OraclePreparedStatementとしてunwrapできない場合は、MyBatis標準のCLOB処理に委譲する。
+        super.setNonNullParameter(ps, i, parameter, jdbcType);
     }
 }
