@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DBPerfSample — ドキュメント一覧</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f6f8fb;
+        --surface: #ffffff;
+        --surface-2: #f1f4f9;
+        --border: #e2e8f0;
+        --text: #1e293b;
+        --text-dim: #64748b;
+        --accent: #2563eb;
+        --accent-dim: #eff6ff;
+        --shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f172a;
+          --surface: #1e293b;
+          --surface-2: #273449;
+          --border: #334155;
+          --text: #e2e8f0;
+          --text-dim: #94a3b8;
+          --accent: #60a5fa;
+          --accent-dim: rgba(96, 165, 250, 0.14);
+          --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family:
+          "Noto Sans JP",
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 48px 20px;
+      }
+      .container {
+        max-width: 640px;
+        width: 100%;
+      }
+      h1 {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 0 0 6px;
+      }
+      .sub {
+        font-size: 14px;
+        color: var(--text-dim);
+        margin: 0 0 36px;
+      }
+      .list {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      a.card {
+        display: block;
+        padding: 20px 24px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        text-decoration: none;
+        color: inherit;
+        box-shadow: var(--shadow);
+        transition: all 0.15s ease;
+      }
+      a.card:hover {
+        border-color: var(--accent);
+        background: var(--accent-dim);
+      }
+      .card-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--accent);
+        margin-bottom: 6px;
+      }
+      .card-desc {
+        font-size: 13.5px;
+        color: var(--text-dim);
+        line-height: 1.65;
+      }
+      .card-badge {
+        display: inline-block;
+        margin-top: 10px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--surface-2);
+        font-size: 11.5px;
+        color: var(--text-dim);
+        font-weight: 500;
+      }
+      footer {
+        margin-top: 48px;
+        font-size: 12px;
+        color: var(--text-dim);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>DBPerfSample — ドキュメント</h1>
+      <p class="sub">技術調査・問題対応のまとめ</p>
+      <div class="list">
+        <a class="card" href="mybatis-clob-binding_cc.html">
+          <div class="card-title">
+            MyBatis CLOBバインド問題の整理（Claude Code 生成版）
+          </div>
+        </a>
+        <a
+          class="card"
+          href="mybatis-clob-binding_codex_with_visual_skill.html"
+        >
+          <div class="card-title">
+            MyBatis CLOBバインド問題の整理（Codex＋ visual-explainer スキル
+            生成版）
+          </div>
+        </a>
+      </div>
+      <footer>DBPerfSample / docs/html</footer>
+    </div>
+  </body>
+</html>

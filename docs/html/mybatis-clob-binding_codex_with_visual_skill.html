@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyBatis CLOBバインド問題の整理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-body: "IBM Plex Sans", "Noto Sans JP", sans-serif;
+      --font-mono: "IBM Plex Mono", "SF Mono", Consolas, monospace;
+      --bg: #faf7f2;
+      --surface: #fffdfa;
+      --surface-2: #f2eee7;
+      --surface-3: #ebe4d8;
+      --border: rgba(69, 52, 35, 0.14);
+      --border-strong: rgba(69, 52, 35, 0.28);
+      --text: #2f261d;
+      --text-dim: #736557;
+      --accent: #b45309;
+      --accent-dim: rgba(180, 83, 9, 0.12);
+      --sage: #5f7a45;
+      --sage-dim: rgba(95, 122, 69, 0.13);
+      --blue: #25636f;
+      --blue-dim: rgba(37, 99, 111, 0.12);
+      --danger: #b91c1c;
+      --danger-dim: rgba(185, 28, 28, 0.10);
+      --ok: #0f766e;
+      --ok-dim: rgba(15, 118, 110, 0.12);
+      --shadow: 0 18px 50px rgba(62, 43, 26, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #191714;
+        --surface: #23201b;
+        --surface-2: #2d2922;
+        --surface-3: #383226;
+        --border: rgba(255, 244, 225, 0.10);
+        --border-strong: rgba(255, 244, 225, 0.22);
+        --text: #f6ead8;
+        --text-dim: #c8b79d;
+        --accent: #f0a84e;
+        --accent-dim: rgba(240, 168, 78, 0.15);
+        --sage: #b4c782;
+        --sage-dim: rgba(180, 199, 130, 0.15);
+        --blue: #78bcc8;
+        --blue-dim: rgba(120, 188, 200, 0.15);
+        --danger: #fca5a5;
+        --danger-dim: rgba(252, 165, 165, 0.14);
+        --ok: #8bd5c8;
+        --ok-dim: rgba(139, 213, 200, 0.14);
+        --shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background-color: var(--bg);
+      background-image:
+        linear-gradient(90deg, var(--border) 1px, transparent 1px),
+        linear-gradient(var(--border) 1px, transparent 1px);
+      background-size: 36px 36px;
+      font-family: var(--font-body);
+      line-height: 1.75;
+    }
+
+    code,
+    pre,
+    .mono {
+      font-family: var(--font-mono);
+    }
+
+    a {
+      color: var(--blue);
+    }
+
+    .wrap {
+      width: min(1480px, calc(100% - 56px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      gap: 42px;
+      padding: 34px 0 80px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 24px;
+      align-self: start;
+      max-height: calc(100dvh - 48px);
+      padding: 16px 0;
+      overflow-y: auto;
+    }
+
+    .toc-title {
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .toc a {
+      display: block;
+      margin: 2px 0;
+      padding: 7px 9px;
+      border-left: 2px solid transparent;
+      border-radius: 5px;
+      color: var(--text-dim);
+      font-size: 12px;
+      line-height: 1.45;
+      text-decoration: none;
+      transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+    }
+
+    .toc a:hover,
+    .toc a.active {
+      color: var(--text);
+      background: var(--surface-2);
+      border-left-color: var(--accent);
+    }
+
+    .main {
+      min-width: 0;
+    }
+
+    .hero {
+      margin-bottom: 30px;
+      padding: clamp(28px, 5vw, 54px);
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 82%, var(--accent) 18%) 100%);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow,
+    .section-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before,
+    .section-label::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    h1 {
+      margin: 14px 0 14px;
+      max-width: 940px;
+      font-size: clamp(34px, 5vw, 68px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 940px;
+      margin: 0;
+      color: var(--text-dim);
+      font-size: clamp(16px, 2vw, 20px);
+      line-height: 1.85;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .fact {
+      min-width: 0;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--surface) 78%, transparent);
+    }
+
+    .fact span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+    }
+
+    .fact strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    section {
+      margin: 34px 0;
+      scroll-margin-top: 28px;
+    }
+
+    h2 {
+      margin: 10px 0 16px;
+      font-size: clamp(24px, 3vw, 34px);
+      line-height: 1.28;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      line-height: 1.4;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    .ve-card {
+      min-width: 0;
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(62, 43, 26, 0.04);
+    }
+
+    .ve-card + .ve-card {
+      margin-top: 14px;
+    }
+
+    .ve-card--accent {
+      border-left: 4px solid var(--accent);
+    }
+
+    .ve-card--danger {
+      border-left: 4px solid var(--danger);
+      background: color-mix(in srgb, var(--surface) 88%, var(--danger) 12%);
+    }
+
+    .ve-card--ok {
+      border-left: 4px solid var(--ok);
+      background: color-mix(in srgb, var(--surface) 88%, var(--ok) 12%);
+    }
+
+    .ve-card--sage {
+      border-left: 4px solid var(--sage);
+    }
+
+    .grid-2,
+    .grid-3,
+    .steps {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .steps {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .step {
+      position: relative;
+      min-width: 0;
+      padding: 18px 18px 18px 52px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .step-num {
+      position: absolute;
+      top: 18px;
+      left: 16px;
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      color: var(--surface);
+      background: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .step span {
+      display: block;
+      color: var(--text-dim);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 1.2em;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    .inline-code,
+    p code,
+    li code,
+    td code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      color: var(--blue);
+      background: var(--blue-dim);
+      font-size: 0.92em;
+      overflow-wrap: anywhere;
+    }
+
+    .code-file {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface-2);
+    }
+
+    .code-file + .code-file {
+      margin-top: 14px;
+    }
+
+    .code-file__header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    pre {
+      margin: 0;
+      padding: 16px;
+      overflow: auto;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.62;
+      white-space: pre;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    table {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      color: var(--text);
+      background: var(--surface-2);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    tbody tr:nth-child(even) {
+      background: color-mix(in srgb, var(--surface) 78%, var(--surface-2) 22%);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .status-ok {
+      color: var(--ok);
+      background: var(--ok-dim);
+    }
+
+    .status-warn {
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .status-fail {
+      color: var(--danger);
+      background: var(--danger-dim);
+    }
+
+    .callout {
+      margin: 18px 0;
+      padding: 18px 20px;
+      border: 1px solid var(--border-strong);
+      border-left: 4px solid var(--danger);
+      border-radius: 8px;
+      background: var(--danger-dim);
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--danger);
+    }
+
+    .decision-strip {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .decision-card {
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .decision-arrow {
+      display: grid;
+      place-items: center;
+      min-width: 58px;
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    .summary-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .summary-item {
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .summary-item span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .summary-item strong {
+      display: block;
+      overflow-wrap: anywhere;
+      line-height: 1.45;
+    }
+
+    .diagram-shell {
+      position: relative;
+      margin: 18px 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgba(62, 43, 26, 0.04);
+    }
+
+    .diagram-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .mermaid-wrap {
+      position: relative;
+      min-height: 560px;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background:
+        linear-gradient(90deg, transparent 0 35px, var(--border) 36px),
+        linear-gradient(transparent 0 35px, var(--border) 36px),
+        var(--surface);
+      background-size: 36px 36px;
+      cursor: grab;
+    }
+
+    .mermaid-wrap.is-panning {
+      cursor: grabbing;
+      user-select: none;
+    }
+
+    .mermaid-viewport {
+      position: relative;
+      width: 100%;
+      min-height: 560px;
+      overflow: hidden;
+    }
+
+    .mermaid-canvas {
+      position: absolute;
+      top: 36px;
+      left: 36px;
+      transform-origin: 0 0;
+      min-width: 980px;
+    }
+
+    .zoom-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      backdrop-filter: blur(10px);
+    }
+
+    .zoom-controls button {
+      width: 28px;
+      height: 28px;
+      border: 0;
+      border-radius: 5px;
+      color: var(--text-dim);
+      background: transparent;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .zoom-controls button:hover {
+      color: var(--text);
+      background: var(--surface-2);
+    }
+
+    .zoom-label {
+      padding: 0 6px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .mermaid {
+      display: inline-block;
+    }
+
+    .mermaid svg {
+      max-width: none !important;
+      height: auto !important;
+    }
+
+    .mermaid .actor {
+      stroke: var(--blue) !important;
+      fill: color-mix(in srgb, var(--surface) 78%, var(--blue) 22%) !important;
+    }
+
+    .mermaid .actor-line {
+      stroke: var(--border-strong) !important;
+    }
+
+    .mermaid .messageLine0,
+    .mermaid .messageLine1 {
+      stroke: var(--text-dim) !important;
+    }
+
+    .mermaid .messageText,
+    .mermaid .loopText,
+    .mermaid .labelText {
+      fill: var(--text) !important;
+      font-family: var(--font-body) !important;
+    }
+
+    .mermaid .note {
+      fill: var(--danger-dim) !important;
+      stroke: var(--danger) !important;
+    }
+
+    .mermaid .noteText {
+      fill: var(--text) !important;
+      font-family: var(--font-body) !important;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate {
+      animation: fadeUp 0.45s ease both;
+      animation-delay: calc(var(--i, 0) * 0.05s);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-delay: 0ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    @media (max-width: 1180px) {
+      .wrap {
+        grid-template-columns: 1fr;
+        width: min(100% - 32px, 980px);
+        gap: 18px;
+        padding-top: 0;
+      }
+
+      .toc {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        gap: 4px;
+        max-height: none;
+        margin: 0 -16px;
+        padding: 10px 16px;
+        overflow-x: auto;
+        border-bottom: 1px solid var(--border);
+        background: color-mix(in srgb, var(--bg) 88%, var(--surface) 12%);
+      }
+
+      .toc-title {
+        display: none;
+      }
+
+      .toc a {
+        flex: 0 0 auto;
+        border-left: 0;
+        border-bottom: 2px solid transparent;
+        white-space: nowrap;
+      }
+
+      .toc a.active {
+        border-bottom-color: var(--accent);
+      }
+
+      section {
+        scroll-margin-top: 62px;
+      }
+    }
+
+    @media (max-width: 820px) {
+      .hero-grid,
+      .grid-2,
+      .grid-3,
+      .steps,
+      .summary-list,
+      .decision-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .decision-arrow {
+        min-height: 34px;
+      }
+
+      .hero {
+        padding: 24px;
+      }
+
+      .ve-card {
+        padding: 18px;
+      }
+
+      .mermaid-wrap,
+      .mermaid-viewport {
+        min-height: 500px;
+      }
+
+      .mermaid-canvas {
+        min-width: 820px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="toc" id="toc" aria-label="ページ内ナビゲーション">
+      <div class="toc-title">Contents</div>
+      <a href="#overview" class="active">概要</a>
+      <a href="#mapping-order">解釈順序</a>
+      <a href="#before-flow">修正前</a>
+      <a href="#where">発生箇所</a>
+      <a href="#solution">解決方法</a>
+      <a href="#after-flow">修正後</a>
+      <a href="#scope">局所適用</a>
+      <a href="#extend">既存Handler拡張</a>
+      <a href="#reader">Reader案</a>
+      <a href="#verification">検証</a>
+      <a href="#summary">まとめ</a>
+    </nav>
+
+    <main class="main">
+      <header class="hero animate" style="--i: 0">
+        <div class="eyebrow">DBPerfSample Technical Note</div>
+        <h1>MyBatis CLOBバインド問題の整理</h1>
+        <p class="lead">
+          `jdbcType=CLOB` を指定していたにもかかわらず、Oracle JDBC側でバインド変数がLONG系として解釈された問題と、
+          `OraclePreparedStatement#setStringForClob` を使った最終対応を整理したHTML版ドキュメントです。
+        </p>
+        <div class="hero-grid" aria-label="要点">
+          <div class="fact">
+            <span>Symptom</span>
+            <strong>ORA-01461</strong>
+          </div>
+          <div class="fact">
+            <span>Trigger</span>
+            <strong>CLOB連結式に40,000文字のStringをbind</strong>
+          </div>
+          <div class="fact">
+            <span>Fix</span>
+            <strong>OracleClobStringTypeHandlerを局所適用</strong>
+          </div>
+        </div>
+      </header>
+
+      <section id="overview" class="animate" style="--i: 1">
+        <div class="section-label">Overview</div>
+        <h2>概要</h2>
+        <div class="grid-2">
+          <article class="ve-card ve-card--danger">
+            <h3>何が起きたか</h3>
+            <p>
+              MyBatisで <code>jdbcType=CLOB</code> を指定していたにもかかわらず、
+              Oracle JDBC側でバインド変数がCLOBではなくLONG系として解釈されました。
+              その結果、CLOB連結のUPDATEで <code>ORA-01461</code> が発生しました。
+            </p>
+          </article>
+          <article class="ve-card ve-card--ok">
+            <h3>期待していた状態</h3>
+            <p>
+              <code>fragment</code> をCLOBとしてバインドし、
+              <code>FRAGMENT || TO_CLOB('=&gt;') || ?</code> の <code>?</code> をCLOB連結式の一部として正しく扱わせることです。
+            </p>
+          </article>
+        </div>
+
+        <div class="code-file" style="margin-top: 14px">
+          <div class="code-file__header">
+            <span>src/main/resources/mapper/LobMapper.xml</span>
+            <span>修正前の問題SQL断片</span>
+          </div>
+          <pre><code>FRAGMENT = FRAGMENT || TO_CLOB('=&gt;') ||
+    #{fragment,jdbcType=CLOB}</code></pre>
+        </div>
+
+        <div class="callout">
+          <strong>問題の本質</strong>
+          <p>
+            Mapper XML上のCLOB指定が不足していたわけではありません。
+            MyBatisはCLOB指定を認識していましたが、標準CLOBハンドラが呼び出すJDBC APIとOracle JDBCの解釈が、今回のSQL式には合いませんでした。
+          </p>
+        </div>
+      </section>
+
+      <section id="mapping-order" class="animate" style="--i: 2">
+        <div class="section-label">Parameter Mapping</div>
+        <h2>MyBatisがパラメータを解釈する順番</h2>
+        <p>
+          Mapper XMLの <code>#{...}</code> は、そのままJDBCに渡されるのではなく、実行前に
+          <code>ParameterMapping</code> として解析され、実行時に <code>TypeHandler</code> を経由して
+          <code>PreparedStatement</code> に設定されます。
+        </p>
+        <div class="steps">
+          <div class="step">
+            <span class="step-num">1</span>
+            <strong>Mapper XML解析</strong>
+            <span><code>#{fragment,jdbcType=CLOB}</code> を解析する。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">2</span>
+            <strong>Java型確認</strong>
+            <span><code>fragment</code> のJava型は <code>String</code>。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">3</span>
+            <strong>JDBC型確認</strong>
+            <span>XML指定によりJDBC型は <code>CLOB</code>。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">4</span>
+            <strong>Handler選択</strong>
+            <span>明示指定がなければ型の組み合わせから標準Handlerを選ぶ。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">5</span>
+            <strong>標準Handler</strong>
+            <span><code>String</code> + <code>CLOB</code> では <code>ClobTypeHandler</code> が選択される。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">6</span>
+            <strong>実行時設定</strong>
+            <span><code>DefaultParameterHandler</code> がSQL上の <code>?</code> の順に処理する。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">7</span>
+            <strong>JDBC API呼出</strong>
+            <span>TypeHandlerが <code>PreparedStatement</code> に値を設定する。</span>
+          </div>
+          <div class="step">
+            <span class="step-num">8</span>
+            <strong>Driver解釈</strong>
+            <span>最終的なbind型は呼び出されたJDBC APIをもとにドライバが解釈する。</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="before-flow" class="animate" style="--i: 3">
+        <div class="section-label">Before Fix</div>
+        <h2>修正前のシーケンス</h2>
+        <p>
+          修正前は、<code>String</code> + <code>jdbcType=CLOB</code> に対してMyBatis標準の
+          <code>ClobTypeHandler</code> が使われていました。この標準ハンドラは
+          <code>PreparedStatement#setCharacterStream</code> を使用します。
+        </p>
+
+        <div class="diagram-shell">
+          <div class="diagram-title">
+            <span>Sequence: 標準ClobTypeHandler経由</span>
+            <span>LONG系解釈が発生</span>
+          </div>
+          <div class="mermaid-wrap" data-initial-zoom="1">
+            <div class="zoom-controls" aria-label="diagram zoom controls">
+              <button type="button" data-zoom="out">-</button>
+              <span class="zoom-label">100%</span>
+              <button type="button" data-zoom="in">+</button>
+              <button type="button" data-zoom="reset">reset</button>
+              <button type="button" data-zoom="expand">open</button>
+            </div>
+            <div class="mermaid-viewport">
+              <div class="mermaid-canvas">
+                <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Service as MyBatisLobService
+    participant Mapper as LobMapper.updateDetail
+    participant MyBatis as MyBatis
+    participant Mapping as ParameterMapping
+    participant Registry as TypeHandlerRegistry
+    participant Handler as ClobTypeHandler
+    participant JDBC as Oracle JDBC PreparedStatement
+    participant DB as Oracle Database
+
+    Service->>Mapper: fragment = 40,000文字のString
+    Mapper->>MyBatis: #{fragment,jdbcType=CLOB}
+    MyBatis->>Mapping: property=fragment, javaType=String, jdbcType=CLOB
+    Mapping->>Registry: Java型 + JDBC型からTypeHandlerを解決
+    Registry-->>Mapping: ClobTypeHandler
+    MyBatis->>Handler: setParameter(ps, index, fragment, CLOB)
+    Handler->>JDBC: setCharacterStream(index, Reader, length)
+    JDBC->>DB: FRAGMENT || TO_CLOB('=>') || ?
+    Note over JDBC,DB: ここで ? がCLOBではなくLONG系として解釈された
+    DB-->>JDBC: ORA-01461
+    JDBC-->>MyBatis: SQLException
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p>
+          <code>setCharacterStream</code> は文字ストリームを渡すJDBC標準APIですが、Oracle JDBCではSQL式や値の長さによってLONG系として扱われるケースがあります。
+          今回はCLOB連結式の <code>?</code> がCLOBとして確定せず、LONG系として解釈されたことが直接原因です。
+        </p>
+      </section>
+
+      <section id="where" class="animate" style="--i: 4">
+        <div class="section-label">Fault Boundary</div>
+        <h2>どこで型の解釈エラーが発生したか</h2>
+        <p>
+          型解釈のズレは、MyBatisの <code>ParameterMapping</code> 作成時ではなく、
+          TypeHandlerがJDBCドライバへ値を渡す段階からOracle実行時にかけて発生しました。
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>段階</th>
+                <th>状態</th>
+                <th>問題の有無</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Mapper XML解析</td>
+                <td><code>jdbcType=CLOB</code> は認識されている</td>
+                <td><span class="status status-ok">問題なし</span></td>
+              </tr>
+              <tr>
+                <td>TypeHandler選択</td>
+                <td><code>String</code> + <code>CLOB</code> から <code>ClobTypeHandler</code> を選択</td>
+                <td><span class="status status-ok">標準動作として妥当</span></td>
+              </tr>
+              <tr>
+                <td>TypeHandler実行</td>
+                <td><code>setCharacterStream</code> で値を設定</td>
+                <td><span class="status status-warn">OracleではLONG系解釈の余地</span></td>
+              </tr>
+              <tr>
+                <td>Oracle実行</td>
+                <td>CLOB連結式の <code>?</code> がLONG系として扱われる</td>
+                <td><span class="status status-fail">ここでORA-01461</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="ve-card ve-card--accent" style="margin-top: 16px">
+          <h3>MyBatis既存実装のコードフラグメント</h3>
+          <p>
+            以下は、MyBatis 3.5.19 の実装から、今回の経路を理解するために必要な部分だけを抜粋したものです。
+            <code>jdbcType=CLOB</code> により <code>ClobTypeHandler</code> は選ばれていますが、
+            最終的にOracle JDBCへ渡るAPIは <code>setCharacterStream</code> です。
+          </p>
+        </div>
+
+        <div class="grid-3" style="margin-top: 14px">
+          <div class="code-file">
+            <div class="code-file__header">
+              <span>TypeHandlerRegistry</span>
+              <span>String + CLOB の登録</span>
+            </div>
+            <pre><code>register(String.class, JdbcType.CLOB, new ClobTypeHandler());</code></pre>
+          </div>
+          <div class="code-file">
+            <div class="code-file__header">
+              <span>DefaultParameterHandler</span>
+              <span>実行時の呼び出し</span>
+            </div>
+            <pre><code>TypeHandler typeHandler = parameterMapping.getTypeHandler();
+JdbcType jdbcType = parameterMapping.getJdbcType();
+typeHandler.setParameter(ps, i + 1, value, jdbcType);</code></pre>
+          </div>
+          <div class="code-file">
+            <div class="code-file__header">
+              <span>ClobTypeHandler</span>
+              <span>CLOB値の設定</span>
+            </div>
+            <pre><code>ps.setCharacterStream(i, new StringReader(parameter), parameter.length());</code></pre>
+          </div>
+        </div>
+
+        <p style="margin-top: 14px">
+          この実装から、今回の問題はMyBatisがCLOB指定を認識しなかったことではなく、
+          標準 <code>ClobTypeHandler</code> のJDBC API選択がOracleのCLOB連結式ではLONG系解釈につながったことだと整理できます。
+        </p>
+      </section>
+
+      <section id="solution" class="animate" style="--i: 5">
+        <div class="section-label">Final Solution</div>
+        <h2>最終的な解決方法</h2>
+        <p>
+          Oracle JDBCの場合だけ <code>OraclePreparedStatement#setStringForClob</code> を使用する独自TypeHandlerを追加しました。
+          これにより、問題のSQL式に渡す値をOracle JDBCへ明示的にCLOBとしてバインドします。
+        </p>
+
+        <div class="code-file">
+          <div class="code-file__header">
+            <span>src/main/java/com/example/dbperf/typehandler/OracleClobStringTypeHandler.java</span>
+            <span>要点</span>
+          </div>
+          <pre><code>@MappedTypes(String.class)
+@MappedJdbcTypes(JdbcType.CLOB)
+public class OracleClobStringTypeHandler extends ClobTypeHandler {
+
+    @Override
+    public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType)
+            throws SQLException {
+        if (ps.isWrapperFor(OraclePreparedStatement.class)) {
+            ps.unwrap(OraclePreparedStatement.class).setStringForClob(i, parameter);
+            return;
+        }
+
+        super.setNonNullParameter(ps, i, parameter, jdbcType);
+    }
+}</code></pre>
+        </div>
+
+        <div class="grid-2" style="margin-top: 14px">
+          <article class="ve-card ve-card--accent">
+            <h3>Oracle JDBCの場合</h3>
+            <p>
+              <code>isWrapperFor</code> と <code>unwrap</code> で
+              <code>OraclePreparedStatement</code> に到達し、<code>setStringForClob</code> を呼びます。
+            </p>
+          </article>
+          <article class="ve-card ve-card--sage">
+            <h3>unwrapできない場合</h3>
+            <p>
+              <code>super.setNonNullParameter(...)</code> に委譲し、MyBatis標準の
+              <code>ClobTypeHandler</code> の動作を利用します。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="after-flow" class="animate" style="--i: 6">
+        <div class="section-label">After Fix</div>
+        <h2>修正後のシーケンス</h2>
+        <p>
+          修正後は、問題が発生した <code>updateDetail</code> の <code>fragment</code> に
+          独自TypeHandlerを明示指定しています。
+        </p>
+
+        <div class="code-file" style="margin-bottom: 14px">
+          <div class="code-file__header">
+            <span>src/main/resources/mapper/LobMapper.xml</span>
+            <span>局所指定</span>
+          </div>
+          <pre><code>#{fragment,jdbcType=CLOB,typeHandler=com.example.dbperf.typehandler.OracleClobStringTypeHandler}</code></pre>
+        </div>
+
+        <div class="diagram-shell">
+          <div class="diagram-title">
+            <span>Sequence: 独自TypeHandler適用後</span>
+            <span>CLOBとしてbind</span>
+          </div>
+          <div class="mermaid-wrap" data-initial-zoom="1">
+            <div class="zoom-controls" aria-label="diagram zoom controls">
+              <button type="button" data-zoom="out">-</button>
+              <span class="zoom-label">100%</span>
+              <button type="button" data-zoom="in">+</button>
+              <button type="button" data-zoom="reset">reset</button>
+              <button type="button" data-zoom="expand">open</button>
+            </div>
+            <div class="mermaid-viewport">
+              <div class="mermaid-canvas">
+                <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Service as MyBatisLobService
+    participant Mapper as LobMapper.updateDetail
+    participant MyBatis as MyBatis
+    participant Custom as OracleClobStringTypeHandler
+    participant Wrapper as PreparedStatement Wrapper
+    participant OraclePS as OraclePreparedStatement
+    participant DB as Oracle Database
+
+    Service->>Mapper: fragment = 40,000文字のString
+    Mapper->>MyBatis: #{fragment,jdbcType=CLOB,typeHandler=OracleClobStringTypeHandler}
+    MyBatis->>Custom: setParameter(ps, index, fragment, CLOB)
+    Custom->>Wrapper: isWrapperFor(OraclePreparedStatement.class)
+
+    alt OraclePreparedStatementへunwrap可能
+        Wrapper-->>Custom: true
+        Custom->>Wrapper: unwrap(OraclePreparedStatement.class)
+        Wrapper-->>Custom: OraclePreparedStatement
+        Custom->>OraclePS: setStringForClob(index, fragment)
+        OraclePS->>DB: FRAGMENT || TO_CLOB('=>') || ? をCLOBとしてbind
+        DB-->>OraclePS: UPDATE成功
+    else unwrap不可
+        Wrapper-->>Custom: false
+        Custom->>Custom: super.setNonNullParameter(...)
+        Note over Custom: MyBatis標準のClobTypeHandlerへ委譲
+    end
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="scope" class="animate" style="--i: 7">
+        <div class="section-label">Scope</div>
+        <h2>局所適用にした理由</h2>
+        <p>
+          問題が確認されたのは、CLOB列への通常INSERTや単純UPDATEではなく、CLOB連結式を含む
+          <code>updateDetail</code> でした。そのため、影響範囲を絞るためにMapper XMLで局所的にTypeHandlerを指定しています。
+        </p>
+
+        <div class="decision-strip">
+          <div class="decision-card">
+            <h3>局所適用</h3>
+            <p>問題が出た <code>updateDetail.fragment</code> だけを差し替える。</p>
+          </div>
+          <div class="decision-arrow">instead of</div>
+          <div class="decision-card">
+            <h3>全体適用</h3>
+            <p><code>String</code> + <code>CLOB</code> の全箇所に影響するため、今回は採用しない。</p>
+          </div>
+        </div>
+
+        <div class="code-file" style="margin-top: 14px">
+          <div class="code-file__header">
+            <span>application.properties</span>
+            <span>全体適用する場合の代替手段</span>
+          </div>
+          <pre><code># mybatis.type-handlers-package=com.example.dbperf.typehandler</code></pre>
+        </div>
+
+        <p style="margin-top: 14px">
+          <code>@MappedTypes(String.class)</code> と <code>@MappedJdbcTypes(JdbcType.CLOB)</code> は、
+          TypeHandlerをパッケージスキャンなどで登録する場合に、どのJava型・JDBC型に対応するハンドラかをMyBatisへ伝えるためのメタ情報です。
+        </p>
+      </section>
+
+      <section id="extend" class="animate" style="--i: 8">
+        <div class="section-label">Implementation Choice</div>
+        <h2>TypeHandlerを全て一から自作しなかった理由</h2>
+        <p>
+          今回差し替えたかった処理は、CLOB値を書き込むときのバインド方法だけです。
+          具体的には、MyBatis標準の <code>ClobTypeHandler</code> が <code>setCharacterStream</code> を呼ぶ部分を、
+          Oracle JDBCの場合だけ <code>OraclePreparedStatement#setStringForClob</code> に置き換えたい、という限定的な要件でした。
+        </p>
+        <div class="grid-3">
+          <article class="ve-card ve-card--accent">
+            <h3>再利用</h3>
+            <p>MyBatis標準のCLOB処理をできるだけ再利用できます。</p>
+          </article>
+          <article class="ve-card ve-card--sage">
+            <h3>差分を限定</h3>
+            <p>読み取り処理など、今回の問題と関係しない処理を独自実装しなくて済みます。</p>
+          </article>
+          <article class="ve-card">
+            <h3>fallback</h3>
+            <p>Oracle JDBCとしてunwrapできない場合は、標準の <code>ClobTypeHandler</code> に委譲できます。</p>
+          </article>
+        </div>
+        <div class="callout" style="border-left-color: var(--accent); background: var(--accent-dim)">
+          <strong style="color: var(--accent)">記録しておく判断</strong>
+          <p>
+            このTypeHandlerはCLOB処理を全面的に作り直すためのクラスではありません。
+            標準 <code>ClobTypeHandler</code> のうち、Oracleで問題になったバインド処理だけを差し替えるためのクラスです。
+          </p>
+        </div>
+      </section>
+
+      <section id="reader" class="animate" style="--i: 9">
+        <div class="section-label">Alternative</div>
+        <h2>Reader型へ変更しなかった理由</h2>
+        <p>
+          MyBatisには <code>Reader</code> をCLOBとして扱うための <code>ClobReaderTypeHandler</code> もあります。
+          しかし、その場合はDTOやモデルの <code>fragment</code> を <code>String</code> ではなく
+          <code>Reader</code> として扱う必要が出ます。
+        </p>
+
+        <div class="grid-2">
+          <div class="code-file">
+            <div class="code-file__header">
+              <span>LobDetail.java</span>
+              <span>Reader型サンプル</span>
+            </div>
+            <pre><code>public class LobDetail {
+
+    private Long id;
+    private Long headerId;
+    private Long no;
+    private Reader fragment;
+    private Long fragmentLen;
+    private String memo;
+}</code></pre>
+          </div>
+
+          <div class="code-file">
+            <div class="code-file__header">
+              <span>MyBatisLobService.java</span>
+              <span>StringReader設定サンプル</span>
+            </div>
+            <pre><code>String updatedDetailText = createSampleText("UPDATE_SAMPLE:", 40000);
+
+LobDetail detail = new LobDetail();
+detail.setId(insertResult.getDetailId());
+detail.setNo(1L);
+detail.setFragment(new StringReader(updatedDetailText));
+detail.setFragmentLen((long) updatedDetailText.length());
+detail.setMemo("MyBatis updated sample data");</code></pre>
+          </div>
+        </div>
+
+        <div class="code-file" style="margin-top: 14px">
+          <div class="code-file__header">
+            <span>LobMapper.xml</span>
+            <span>javaType明示例</span>
+          </div>
+          <pre><code>#{fragment,jdbcType=CLOB,javaType=java.io.Reader}</code></pre>
+        </div>
+
+        <div class="grid-2" style="margin-top: 14px">
+          <article class="ve-card ve-card--danger">
+            <h3>ストリームとしての制約</h3>
+            <p>
+              <code>Reader</code> は値そのものではなく、値を読み出すためのストリームです。
+              一度読み進めると、同じインスタンスをそのまま再利用できません。
+            </p>
+          </article>
+          <article class="ve-card ve-card--sage">
+            <h3>DTOとしての利便性</h3>
+            <p>
+              ログ出力、テストでの値比較、レスポンス検証、同じ値を複数回使う処理では、
+              中身を直接保持する <code>String</code> のほうが扱いやすいです。
+            </p>
+          </article>
+        </div>
+
+        <p style="margin-top: 14px">
+          今回のアプリでは、<code>fragment</code> はサービス層・テスト・レスポンス確認で文字列として扱うほうが自然です。
+          問題はJava側の表現型ではなく、Oracle JDBCへのバインドAPI選択にありました。
+          そのため、モデルを <code>Reader</code> に寄せるのではなく、<code>String</code> のままOracle向けTypeHandlerでバインド方法だけを変更しました。
+        </p>
+      </section>
+
+      <section id="verification" class="animate" style="--i: 10">
+        <div class="section-label">Verification</div>
+        <h2>検証結果</h2>
+        <div class="grid-2">
+          <article class="ve-card">
+            <h3>実行コマンド</h3>
+            <div class="code-file">
+              <pre><code>.\mvnw -Dtest=MyBatisLobControllerTest test</code></pre>
+            </div>
+          </article>
+          <article class="ve-card ve-card--ok">
+            <h3>結果</h3>
+            <p>
+              Oracle起動済みの環境で、対象テストが成功することを確認しています。
+            </p>
+            <p><code>Tests run: 2, Failures: 0, Errors: 0</code></p>
+          </article>
+        </div>
+      </section>
+
+      <section id="summary" class="animate" style="--i: 11">
+        <div class="section-label">Summary</div>
+        <h2>まとめ</h2>
+        <p>
+          今回の問題は、Mapper XML上の <code>jdbcType=CLOB</code> 指定が不足していた問題ではありません。
+          MyBatisはCLOB指定を認識し、標準の <code>ClobTypeHandler</code> を選択していました。
+          しかし標準ハンドラが <code>setCharacterStream</code> を使うため、Oracle JDBCではCLOB連結式のバインド変数がLONG系として解釈されるケースがありました。
+        </p>
+
+        <div class="summary-list">
+          <div class="summary-item">
+            <span>MyBatis上の型指定</span>
+            <strong>String + jdbcType=CLOB</strong>
+          </div>
+          <div class="summary-item">
+            <span>修正前のTypeHandler</span>
+            <strong>ClobTypeHandler</strong>
+          </div>
+          <div class="summary-item">
+            <span>修正前のJDBC API</span>
+            <strong>setCharacterStream</strong>
+          </div>
+          <div class="summary-item">
+            <span>Oracle側の誤解釈</span>
+            <strong>CLOBではなくLONG系としてbind</strong>
+          </div>
+          <div class="summary-item">
+            <span>発生エラー</span>
+            <strong>ORA-01461</strong>
+          </div>
+          <div class="summary-item">
+            <span>修正後のTypeHandler</span>
+            <strong>OracleClobStringTypeHandler</strong>
+          </div>
+          <div class="summary-item">
+            <span>修正後のOracle向けAPI</span>
+            <strong>OraclePreparedStatement#setStringForClob</strong>
+          </div>
+          <div class="summary-item">
+            <span>適用範囲</span>
+            <strong>LobMapper.xml の updateDetail.fragment に局所適用</strong>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+
+    mermaid.initialize({
+      startOnLoad: true,
+      securityLevel: "loose",
+      theme: "base",
+      sequence: {
+        mirrorActors: false,
+        showSequenceNumbers: true,
+        actorMargin: 42,
+        messageMargin: 46,
+        noteMargin: 16
+      },
+      themeVariables: {
+        background: "transparent",
+        primaryColor: getComputedStyle(document.documentElement).getPropertyValue("--surface").trim(),
+        primaryBorderColor: getComputedStyle(document.documentElement).getPropertyValue("--blue").trim(),
+        primaryTextColor: getComputedStyle(document.documentElement).getPropertyValue("--text").trim(),
+        actorBkg: getComputedStyle(document.documentElement).getPropertyValue("--surface-2").trim(),
+        actorBorder: getComputedStyle(document.documentElement).getPropertyValue("--blue").trim(),
+        actorTextColor: getComputedStyle(document.documentElement).getPropertyValue("--text").trim(),
+        signalColor: getComputedStyle(document.documentElement).getPropertyValue("--text-dim").trim(),
+        signalTextColor: getComputedStyle(document.documentElement).getPropertyValue("--text").trim(),
+        noteBkgColor: getComputedStyle(document.documentElement).getPropertyValue("--danger-dim").trim(),
+        noteTextColor: getComputedStyle(document.documentElement).getPropertyValue("--text").trim(),
+        noteBorderColor: getComputedStyle(document.documentElement).getPropertyValue("--danger").trim(),
+        fontFamily: "'IBM Plex Sans', 'Noto Sans JP', sans-serif",
+        fontSize: "15px"
+      }
+    });
+
+    function setupToc() {
+      const toc = document.getElementById("toc");
+      const links = Array.from(toc.querySelectorAll("a"));
+      const sections = links
+        .map(link => {
+          const id = link.getAttribute("href").slice(1);
+          return { link, el: document.getElementById(id) };
+        })
+        .filter(item => item.el);
+
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          links.forEach(link => link.classList.remove("active"));
+          const match = sections.find(item => item.el === entry.target);
+          if (match) {
+            match.link.classList.add("active");
+            if (window.innerWidth <= 1180) {
+              match.link.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+            }
+          }
+        });
+      }, { rootMargin: "-15% 0px -75% 0px" });
+
+      sections.forEach(item => observer.observe(item.el));
+    }
+
+    function setupDiagram(shell) {
+      const wrap = shell.querySelector(".mermaid-wrap");
+      const canvas = shell.querySelector(".mermaid-canvas");
+      const label = shell.querySelector(".zoom-label");
+      const mermaidBlock = shell.querySelector(".mermaid");
+      const state = {
+        scale: Number(wrap.dataset.initialZoom || 1),
+        x: 0,
+        y: 0,
+        dragging: false,
+        moved: false,
+        startX: 0,
+        startY: 0,
+        baseX: 0,
+        baseY: 0
+      };
+
+      function apply() {
+        canvas.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+        label.textContent = `${Math.round(state.scale * 100)}%`;
+      }
+
+      function clampScale(value) {
+        return Math.max(0.45, Math.min(2.4, value));
+      }
+
+      shell.querySelectorAll("[data-zoom]").forEach(button => {
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          const action = button.dataset.zoom;
+          if (action === "in") state.scale = clampScale(state.scale + 0.15);
+          if (action === "out") state.scale = clampScale(state.scale - 0.15);
+          if (action === "reset") {
+            state.scale = Number(wrap.dataset.initialZoom || 1);
+            state.x = 0;
+            state.y = 0;
+          }
+          if (action === "expand") openDiagramInNewTab(mermaidBlock);
+          apply();
+        });
+      });
+
+      wrap.addEventListener("wheel", event => {
+        if (!(event.ctrlKey || event.metaKey)) return;
+        event.preventDefault();
+        state.scale = clampScale(state.scale + (event.deltaY < 0 ? 0.12 : -0.12));
+        apply();
+      }, { passive: false });
+
+      wrap.addEventListener("pointerdown", event => {
+        if (event.target.closest("button")) return;
+        state.dragging = true;
+        state.moved = false;
+        state.startX = event.clientX;
+        state.startY = event.clientY;
+        state.baseX = state.x;
+        state.baseY = state.y;
+        wrap.classList.add("is-panning");
+        wrap.setPointerCapture(event.pointerId);
+      });
+
+      wrap.addEventListener("pointermove", event => {
+        if (!state.dragging) return;
+        const dx = event.clientX - state.startX;
+        const dy = event.clientY - state.startY;
+        if (Math.abs(dx) + Math.abs(dy) > 4) state.moved = true;
+        state.x = state.baseX + dx;
+        state.y = state.baseY + dy;
+        apply();
+      });
+
+      wrap.addEventListener("pointerup", event => {
+        if (!state.dragging) return;
+        state.dragging = false;
+        wrap.classList.remove("is-panning");
+        wrap.releasePointerCapture(event.pointerId);
+        if (!state.moved && !event.target.closest("button")) {
+          openDiagramInNewTab(mermaidBlock);
+        }
+      });
+
+      apply();
+    }
+
+    function openDiagramInNewTab(mermaidBlock) {
+      const svg = mermaidBlock.querySelector("svg");
+      if (!svg) return;
+      const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Mermaid Diagram</title>
+<style>
+body { margin: 0; padding: 24px; background: #faf7f2; color: #2f261d; font-family: sans-serif; }
+svg { max-width: none; height: auto; }
+</style>
+</head>
+<body>${svg.outerHTML}</body>
+</html>`;
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    }
+
+    window.addEventListener("load", () => {
+      setupToc();
+      document.querySelectorAll(".diagram-shell").forEach(setupDiagram);
+    });
+  </script>
+</body>
+</html>

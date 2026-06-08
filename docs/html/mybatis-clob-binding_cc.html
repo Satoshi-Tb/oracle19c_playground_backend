@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MyBatis CLOBバインド問題の整理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <style>
+    :root {
+      --font-body: "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --surface-2: #f1f4f9;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text: #1e293b;
+      --text-dim: #64748b;
+      --accent: #2563eb;
+      --accent-dim: #eff6ff;
+      --danger: #dc2626;
+      --danger-dim: #fef2f2;
+      --ok: #059669;
+      --ok-dim: #ecfdf5;
+      --warn: #d97706;
+      --warn-dim: #fffbeb;
+      --shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+      --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.10);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --surface: #1e293b;
+        --surface-2: #273449;
+        --border: #334155;
+        --border-strong: #475569;
+        --text: #e2e8f0;
+        --text-dim: #94a3b8;
+        --accent: #60a5fa;
+        --accent-dim: rgba(96, 165, 250, 0.14);
+        --danger: #f87171;
+        --danger-dim: rgba(248, 113, 113, 0.12);
+        --ok: #34d399;
+        --ok-dim: rgba(52, 211, 153, 0.12);
+        --warn: #fbbf24;
+        --warn-dim: rgba(251, 191, 36, 0.12);
+        --shadow: 0 4px 24px rgba(0, 0, 0, 0.30);
+        --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.45);
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.85;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .layout {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      gap: 48px;
+      padding: 48px 28px 96px;
+    }
+
+    /* ---------- Sidebar / TOC ---------- */
+    .toc {
+      position: sticky;
+      top: 32px;
+      align-self: start;
+      max-height: calc(100vh - 64px);
+      overflow-y: auto;
+      font-size: 13.5px;
+    }
+    .toc-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+    .toc a {
+      display: block;
+      padding: 6px 12px;
+      color: var(--text-dim);
+      text-decoration: none;
+      border-left: 2px solid var(--border);
+      border-radius: 0 6px 6px 0;
+      transition: all 0.15s ease;
+      line-height: 1.45;
+    }
+    .toc a:hover {
+      color: var(--accent);
+      background: var(--accent-dim);
+      border-left-color: var(--accent);
+    }
+
+    /* ---------- Main content ---------- */
+    main { min-width: 0; }
+
+    .hero {
+      background: linear-gradient(135deg, var(--accent) 0%, #1e40af 100%);
+      color: #fff;
+      border-radius: 18px;
+      padding: 44px 40px;
+      margin-bottom: 44px;
+      box-shadow: var(--shadow-lg);
+    }
+    .hero .eyebrow {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      opacity: 0.85;
+      margin-bottom: 12px;
+    }
+    .hero h1 {
+      margin: 0 0 14px;
+      font-size: 30px;
+      line-height: 1.35;
+      font-weight: 700;
+    }
+    .hero p {
+      margin: 0;
+      opacity: 0.92;
+      font-size: 15px;
+      line-height: 1.75;
+    }
+
+    section { margin-bottom: 14px; scroll-margin-top: 24px; }
+
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin: 48px 0 18px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    h2 .num {
+      flex: none;
+      width: 30px; height: 30px;
+      display: grid; place-items: center;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 9px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 28px 0 12px;
+      color: var(--text);
+    }
+
+    p { margin: 14px 0; }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.86em;
+      background: var(--surface-2);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: var(--accent);
+      border: 1px solid var(--border);
+    }
+
+    pre {
+      margin: 18px 0;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+    }
+    pre code {
+      display: block;
+      padding: 20px 22px;
+      font-size: 13px;
+      line-height: 1.7;
+      background: #282c34;
+      color: #abb2bf;
+      border: none;
+      border-radius: 0;
+      overflow-x: auto;
+    }
+    .code-label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #8b95a7;
+      background: #21252b;
+      padding: 8px 22px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    ul, ol { margin: 14px 0; padding-left: 24px; }
+    li { margin: 7px 0; }
+
+    /* ---------- Tables ---------- */
+    .table-wrap { overflow-x: auto; margin: 20px 0; border-radius: 12px; box-shadow: var(--shadow); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      font-size: 14px;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: var(--surface-2);
+      font-weight: 600;
+      font-size: 12.5px;
+      letter-spacing: 0.03em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--surface-2); }
+
+    /* ---------- Callouts ---------- */
+    .callout {
+      margin: 22px 0;
+      padding: 18px 22px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      border-left-width: 4px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .callout .label {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 6px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .callout p:first-of-type { margin-top: 0; }
+    .callout p:last-child { margin-bottom: 0; }
+    .callout.danger { border-left-color: var(--danger); }
+    .callout.danger .label { color: var(--danger); }
+    .callout.ok { border-left-color: var(--ok); }
+    .callout.ok .label { color: var(--ok); }
+    .callout.warn { border-left-color: var(--warn); }
+    .callout.warn .label { color: var(--warn); }
+    .callout.info { border-left-color: var(--accent); }
+    .callout.info .label { color: var(--accent); }
+
+    /* ---------- Mermaid ---------- */
+    .diagram {
+      margin: 22px 0;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+    .diagram-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .diagram-title {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    .diagram-tools { display: flex; gap: 6px; }
+    .diagram-tools button {
+      width: 32px; height: 32px;
+      display: grid; place-items: center;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      font-family: var(--font-mono);
+      transition: all 0.15s ease;
+    }
+    .diagram-tools button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .mermaid-viewport {
+      position: relative;
+      height: 460px;
+      min-height: 240px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-2);
+      overflow: hidden;
+      cursor: grab;
+      resize: vertical;
+    }
+    .mermaid-viewport:active { cursor: grabbing; }
+    .mermaid-viewport .mermaid { width: 100%; height: 100%; }
+    .mermaid-viewport .mermaid svg {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: none !important;
+      display: block;
+    }
+    .diagram-hint {
+      font-size: 11.5px;
+      color: var(--text-dim);
+      margin-top: 8px;
+      text-align: right;
+    }
+
+    /* ---------- Summary list ---------- */
+    .summary-grid {
+      display: grid;
+      gap: 0;
+      margin: 22px 0;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .summary-grid .row {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .summary-grid .row:last-child { border-bottom: none; }
+    .summary-grid .k {
+      background: var(--surface-2);
+      padding: 12px 18px;
+      font-weight: 600;
+      font-size: 13.5px;
+      color: var(--text-dim);
+      border-right: 1px solid var(--border);
+    }
+    .summary-grid .v {
+      background: var(--surface);
+      padding: 12px 18px;
+      font-size: 14px;
+    }
+    .summary-grid .v code { font-size: 0.85em; }
+
+    footer {
+      margin-top: 64px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 880px) {
+      .layout { grid-template-columns: 1fr; gap: 0; padding: 24px 16px 64px; }
+      .toc { display: none; }
+      .hero { padding: 32px 24px; }
+      .hero h1 { font-size: 23px; }
+      .summary-grid .row { grid-template-columns: 1fr; }
+      .summary-grid .k { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <!-- ============ TOC ============ -->
+    <nav class="toc">
+      <div class="toc-title">目次</div>
+      <a href="#overview">概要</a>
+      <a href="#impl">関係する実装</a>
+      <a href="#order">パラメータ解釈の順番</a>
+      <a href="#before">修正前のシーケンス</a>
+      <a href="#where">発生箇所の整理</a>
+      <a href="#solution">最終的な解決方法</a>
+      <a href="#after">修正後のシーケンス</a>
+      <a href="#scope">局所適用にした理由</a>
+      <a href="#extend">一から自作しなかった理由</a>
+      <a href="#reader">Reader型へ変更しなかった理由</a>
+      <a href="#verify">検証結果</a>
+      <a href="#summary">まとめ</a>
+    </nav>
+
+    <!-- ============ MAIN ============ -->
+    <main>
+      <header class="hero">
+        <div class="eyebrow">MyBatis · Oracle JDBC · TypeHandler</div>
+        <h1>MyBatis CLOBバインド問題の整理</h1>
+        <p><code style="background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3)">jdbcType=CLOB</code> を指定していたのに、Oracle JDBC側でバインド変数がLONG系として解釈され、CLOB連結のUPDATEで <code style="background:rgba(255,255,255,0.15);color:#fff;border-color:rgba(255,255,255,0.3)">ORA-01461</code> が発生した問題の原因と対応のまとめ。</p>
+      </header>
+
+      <!-- 概要 -->
+      <section id="overview">
+        <h2><span class="num">1</span>概要</h2>
+        <p>今回の問題は、MyBatisで <code>jdbcType=CLOB</code> を指定していたにもかかわらず、Oracle JDBC側でバインド変数がCLOBではなくLONG系として解釈され、CLOB連結のUPDATEでエラーになったものです。</p>
+        <p>問題が発生したSQL断片は <code>LobMapper.xml</code> の <code>updateDetail</code> です。</p>
+        <pre><div class="code-label">LobMapper.xml — updateDetail</div><code class="language-xml">FRAGMENT = FRAGMENT || TO_CLOB('=&gt;') ||
+    #{fragment,jdbcType=CLOB}</code></pre>
+        <p>更新時の <code>fragment</code> は <code>MyBatisLobService</code> で40,000文字の文字列として生成されます。この値を上記のCLOB連結式に渡した際、Oracleから以下の系統のエラーが返りました。</p>
+        <div class="callout danger">
+          <div class="label">⛔ ORA-01461</div>
+          <p>LONG値はLONG列にのみバインドできます</p>
+        </div>
+        <p>期待した状態は「<code>fragment</code> をCLOBとしてバインドする」ことでした。しかし、MyBatis標準のCLOB向けTypeHandlerが使用するJDBC APIとOracle JDBCの型解釈の組み合わせにより、実際にはLONG系として扱われました。</p>
+      </section>
+
+      <!-- 関係する実装 -->
+      <section id="impl">
+        <h2><span class="num">2</span>関係する実装</h2>
+        <p>対象箇所は以下です。</p>
+        <ul>
+          <li><code>src/main/resources/mapper/LobMapper.xml</code></li>
+          <li><code>src/main/java/com/example/dbperf/service/MyBatisLobService.java</code></li>
+          <li><code>src/main/java/com/example/dbperf/typehandler/OracleClobStringTypeHandler.java</code></li>
+          <li><code>src/main/resources/application.properties</code></li>
+        </ul>
+        <p>現在の対応では、問題が発生した <code>updateDetail</code> の <code>fragment</code> にだけ独自TypeHandlerを局所適用しています。</p>
+        <pre><div class="code-label">LobMapper.xml</div><code class="language-xml">#{fragment,jdbcType=CLOB,typeHandler=com.example.dbperf.typehandler.OracleClobStringTypeHandler}</code></pre>
+      </section>
+
+      <!-- 解釈の順番 -->
+      <section id="order">
+        <h2><span class="num">3</span>MyBatisがパラメータを解釈する順番</h2>
+        <p>MyBatisでは、Mapper XMLの <code>#{...}</code> がそのままJDBCに渡されるわけではありません。実行前に <code>ParameterMapping</code> として解析され、実行時に <code>TypeHandler</code> を経由して <code>PreparedStatement</code> に値が設定されます。</p>
+        <p>大まかな順番は次の通りです。</p>
+        <ol>
+          <li>Mapper XMLの <code>#{fragment,jdbcType=CLOB}</code> を解析する。</li>
+          <li><code>fragment</code> のJava型を確認する。今回のJava型は <code>String</code>。</li>
+          <li>XMLで指定されたJDBC型を確認する。今回のJDBC型は <code>CLOB</code>。</li>
+          <li><code>typeHandler</code> が明示指定されていなければ、Java型とJDBC型から標準TypeHandlerを選択する。</li>
+          <li><code>String</code> + <code>JdbcType.CLOB</code> の組み合わせでは、標準の <code>ClobTypeHandler</code> が使用される。</li>
+          <li>実行時に <code>DefaultParameterHandler</code> がSQL上の <code>?</code> の順番にパラメータを処理する。</li>
+          <li>各パラメータについて、選択済みのTypeHandlerが <code>PreparedStatement</code> に値を設定する。</li>
+          <li>最終的なバインド型は、呼び出されたJDBC APIをもとにJDBCドライバが解釈する。</li>
+        </ol>
+        <div class="callout info">
+          <div class="label">ℹ️ ポイント</div>
+          <p><code>jdbcType=CLOB</code> を指定した時点でOracleにCLOBとして渡ることが保証されるわけではありません。MyBatisはその指定をもとにTypeHandlerを選択しますが、実際にどのJDBC APIで値を設定するかはTypeHandlerの実装に依存します。</p>
+        </div>
+      </section>
+
+      <!-- 修正前のシーケンス -->
+      <section id="before">
+        <h2><span class="num">4</span>修正前のシーケンス</h2>
+        <p>修正前は、<code>String</code> + <code>jdbcType=CLOB</code> に対してMyBatis標準の <code>ClobTypeHandler</code> が使われていました。この標準ハンドラは <code>PreparedStatement#setCharacterStream</code> を使用します。</p>
+        <div class="diagram">
+          <div class="diagram-head">
+            <div class="diagram-title">修正前 — ClobTypeHandler が setCharacterStream を使用</div>
+            <div class="diagram-tools">
+              <button data-action="out" title="縮小">−</button>
+              <button data-action="in" title="拡大">＋</button>
+              <button data-action="reset" title="リセット">⤢</button>
+            </div>
+          </div>
+          <div class="mermaid-viewport">
+          <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Service as MyBatisLobService
+    participant Mapper as LobMapper.updateDetail
+    participant MyBatis as MyBatis
+    participant Mapping as ParameterMapping
+    participant Registry as TypeHandlerRegistry
+    participant Handler as ClobTypeHandler
+    participant JDBC as Oracle JDBC PreparedStatement
+    participant DB as Oracle Database
+
+    Service->>Mapper: fragment = 40,000文字のString
+    Mapper->>MyBatis: #{fragment,jdbcType=CLOB}
+    MyBatis->>Mapping: property=fragment, javaType=String, jdbcType=CLOB
+    Mapping->>Registry: Java型 + JDBC型からTypeHandlerを解決
+    Registry-->>Mapping: ClobTypeHandler
+    MyBatis->>Handler: setParameter(ps, index, fragment, CLOB)
+    Handler->>JDBC: setCharacterStream(index, Reader, length)
+    JDBC->>DB: FRAGMENT || TO_CLOB('=>') || ?
+    Note over JDBC,DB: ここで ? がCLOBではなくLONG系として解釈された
+    DB-->>JDBC: ORA-01461
+    JDBC-->>MyBatis: SQLException
+          </pre>
+          </div>
+          <div class="diagram-hint">ドラッグで移動 / ホイール・ボタンで拡大縮小 / ダブルクリックでズーム / 枠下端で高さ変更</div>
+        </div>
+        <p>この時点でMyBatisは <code>jdbcType=CLOB</code> を認識しています。にもかかわらずエラーになった理由は、標準 <code>ClobTypeHandler</code> の実装がCLOB専用のOracle APIではなく、汎用的な <code>setCharacterStream</code> を使うためです。</p>
+        <h3>MyBatis実装の ClobTypeHandler 該当箇所抜粋</h3>
+        <pre><div class="code-label">org.apache.ibatis.type.ClobTypeHandler</div><code class="language-java">  @Override
+  public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType)
+      throws SQLException {
+    StringReader reader = new StringReader(parameter);
+    ps.setCharacterStream(i, reader, parameter.length());
+  }</code></pre>
+        <p><code>setCharacterStream</code> は文字ストリームを渡すJDBC標準APIですが、Oracle JDBCではSQL式や値の長さによってLONG系として扱われるケースがあります。今回のCLOB連結式では、<code>FRAGMENT || TO_CLOB('=&gt;') || ?</code> の <code>?</code> がCLOBとして確定せず、LONG系として解釈されたことがエラーの直接原因です。</p>
+      </section>
+
+      <!-- 発生箇所の整理 -->
+      <section id="where">
+        <h2><span class="num">5</span>発生箇所の整理</h2>
+        <p>型解釈のズレは、MyBatisの <code>ParameterMapping</code> 作成時ではなく、TypeHandlerがJDBCドライバへ値を渡す段階で発生しました。</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>段階</th><th>状態</th><th>問題の有無</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Mapper XML解析</td><td><code>jdbcType=CLOB</code> は認識されている</td><td>問題なし</td></tr>
+              <tr><td>TypeHandler選択</td><td><code>String</code> + <code>CLOB</code> から <code>ClobTypeHandler</code> を選択</td><td>MyBatis標準動作としては妥当</td></tr>
+              <tr><td>TypeHandler実行</td><td><code>setCharacterStream</code> で値を設定</td><td>OracleではLONG系解釈の余地がある</td></tr>
+              <tr><td>Oracle実行</td><td>CLOB連結式の <code>?</code> がLONG系として扱われる</td><td>ここでORA-01461</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>したがって、「MyBatisがCLOB指定を無視した」というより、「CLOB指定により標準CLOBハンドラは選ばれたが、その標準ハンドラのJDBC API選択がOracleの今回のSQLには合わなかった」と整理できます。</p>
+      </section>
+
+      <!-- 最終的な解決方法 -->
+      <section id="solution">
+        <h2><span class="num">6</span>最終的な解決方法</h2>
+        <p>最終対応では、Oracle JDBCの場合だけ <code>OraclePreparedStatement#setStringForClob</code> を使用する独自TypeHandlerを追加しました。</p>
+        <pre><div class="code-label">OracleClobStringTypeHandler.java</div><code class="language-java">@MappedTypes(String.class)
+@MappedJdbcTypes(JdbcType.CLOB)
+public class OracleClobStringTypeHandler extends ClobTypeHandler {
+
+    @Override
+    public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType)
+            throws SQLException {
+        if (ps.isWrapperFor(OraclePreparedStatement.class)) {
+            ps.unwrap(OraclePreparedStatement.class).setStringForClob(i, parameter);
+            return;
+        }
+
+        super.setNonNullParameter(ps, i, parameter, jdbcType);
+    }
+}</code></pre>
+        <p>この実装の意図は次の通りです。</p>
+        <ul>
+          <li><code>ClobTypeHandler</code> を継承し、読み取り処理やOracle JDBC以外の標準処理は既存実装に任せる。</li>
+          <li>書き込み時の <code>setNonNullParameter</code> だけを差し替える。</li>
+          <li>Oracle JDBCとしてunwrapできる場合は、OracleのCLOB専用APIである <code>setStringForClob</code> を使う。</li>
+          <li>Oracle JDBCとしてunwrapできない場合は、標準の <code>ClobTypeHandler</code> に委譲する。</li>
+        </ul>
+      </section>
+
+      <!-- 修正後のシーケンス -->
+      <section id="after">
+        <h2><span class="num">7</span>修正後のシーケンス</h2>
+        <p>修正後は、問題が発生した <code>updateDetail</code> の <code>fragment</code> に独自TypeHandlerを明示指定しています。</p>
+        <div class="diagram">
+          <div class="diagram-head">
+            <div class="diagram-title">修正後 — Oracle時のみ setStringForClob を使用</div>
+            <div class="diagram-tools">
+              <button data-action="out" title="縮小">−</button>
+              <button data-action="in" title="拡大">＋</button>
+              <button data-action="reset" title="リセット">⤢</button>
+            </div>
+          </div>
+          <div class="mermaid-viewport">
+          <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant Service as MyBatisLobService
+    participant Mapper as LobMapper.updateDetail
+    participant MyBatis as MyBatis
+    participant Custom as OracleClobStringTypeHandler
+    participant Wrapper as PreparedStatement Wrapper
+    participant OraclePS as OraclePreparedStatement
+    participant DB as Oracle Database
+
+    Service->>Mapper: fragment = 40,000文字のString
+    Mapper->>MyBatis: #{fragment,jdbcType=CLOB,typeHandler=OracleClobStringTypeHandler}
+    MyBatis->>Custom: setParameter(ps, index, fragment, CLOB)
+    Custom->>Wrapper: isWrapperFor(OraclePreparedStatement.class)
+
+    alt OraclePreparedStatementへunwrap可能
+        Wrapper-->>Custom: true
+        Custom->>Wrapper: unwrap(OraclePreparedStatement.class)
+        Wrapper-->>Custom: OraclePreparedStatement
+        Custom->>OraclePS: setStringForClob(index, fragment)
+        OraclePS->>DB: FRAGMENT || TO_CLOB('=>') || ? をCLOBとしてbind
+        DB-->>OraclePS: UPDATE成功
+    else unwrap不可
+        Wrapper-->>Custom: false
+        Custom->>Custom: super.setNonNullParameter(...)
+        Note over Custom: MyBatis標準のClobTypeHandlerへ委譲
+    end
+          </pre>
+          </div>
+          <div class="diagram-hint">ドラッグで移動 / ホイール・ボタンで拡大縮小 / ダブルクリックでズーム / 枠下端で高さ変更</div>
+        </div>
+        <div class="callout ok">
+          <div class="label">✅ 効果</div>
+          <p>この対応により、Oracle JDBCでは <code>?</code> がCLOBとしてバインドされ、CLOB連結式でLONG系として誤解釈されることを避けられます。</p>
+        </div>
+      </section>
+
+      <!-- 局所適用にした理由 -->
+      <section id="scope">
+        <h2><span class="num">8</span>局所適用にした理由</h2>
+        <p>今回問題が確認されたのは、CLOB列への通常INSERTや単純UPDATEではなく、CLOB連結式を含む <code>updateDetail</code> でした。そのため、まずは影響範囲を絞るためにMapper XMLで局所的にTypeHandlerを指定しています。</p>
+        <pre><div class="code-label">LobMapper.xml</div><code class="language-xml">#{fragment,jdbcType=CLOB,typeHandler=com.example.dbperf.typehandler.OracleClobStringTypeHandler}</code></pre>
+        <p><code>@MappedTypes(String.class)</code> と <code>@MappedJdbcTypes(JdbcType.CLOB)</code> は、TypeHandlerをパッケージスキャンなどで登録する場合に、どのJava型・JDBC型に対応するハンドラかをMyBatisへ伝えるためのメタ情報です。現在のようにMapper XMLで <code>typeHandler</code> を明示指定している場合、動作上はこの明示指定が優先されます。</p>
+        <p>全体適用したい場合は、<code>application.properties</code> のコメントに残している通り、TypeHandlerパッケージを登録する方法があります。</p>
+        <pre><div class="code-label">application.properties</div><code class="language-properties"># mybatis.type-handlers-package=com.example.dbperf.typehandler</code></pre>
+        <div class="callout warn">
+          <div class="label">⚠️ 注意</div>
+          <p><code>String</code> + <code>CLOB</code> の全箇所に影響するため、今回の対応では局所適用を継続しています。</p>
+        </div>
+      </section>
+
+      <!-- 一から自作しなかった理由 -->
+      <section id="extend">
+        <h2><span class="num">9</span>TypeHandlerを全て一から自作しなかった理由</h2>
+        <p>今回差し替えたかった処理は、CLOB値を書き込むときのバインド方法だけです。具体的には、MyBatis標準の <code>ClobTypeHandler</code> が <code>setCharacterStream</code> を呼ぶ部分を、Oracle JDBCの場合だけ <code>OraclePreparedStatement#setStringForClob</code> に置き換えたい、という限定的な要件でした。</p>
+        <p>そのため、TypeHandler全体を <code>BaseTypeHandler</code> から一から実装するのではなく、既存の <code>ClobTypeHandler</code> を継承し、<code>setNonNullParameter</code> だけをoverrideしています。</p>
+        <p>この方針にした理由は次の通りです。</p>
+        <ul>
+          <li>MyBatis標準のCLOB処理をできるだけ再利用できる。</li>
+          <li>読み取り処理など、今回の問題と関係しない処理を独自実装しなくてよい。</li>
+          <li>Oracle JDBCとして扱える場合だけ、問題の原因になった書き込みAPIを差し替えられる。</li>
+          <li>Oracle JDBCとしてunwrapできない場合は、標準の <code>ClobTypeHandler</code> に委譲できる。</li>
+          <li>独自実装範囲を小さくできるため、MyBatis標準実装との差分が明確になる。</li>
+        </ul>
+        <p>つまり、このTypeHandlerは「CLOB処理を全面的に作り直すためのクラス」ではなく、「標準 <code>ClobTypeHandler</code> のうち、Oracleで問題になったバインド処理だけを差し替えるためのクラス」です。</p>
+      </section>
+
+      <!-- Reader型へ変更しなかった理由 -->
+      <section id="reader">
+        <h2><span class="num">10</span>Reader型へ変更しなかった理由</h2>
+        <p>MyBatisには <code>Reader</code> をCLOBとして扱うための <code>ClobReaderTypeHandler</code> もあります。しかし、その場合はDTOやモデルの <code>fragment</code> を <code>String</code> ではなく <code>Reader</code> として扱う必要が出ます。</p>
+        <p>実装イメージは次のようになります。</p>
+        <pre><div class="code-label">LobDetail.java（イメージ）</div><code class="language-java">public class LobDetail {
+
+    private Long id;
+    private Long headerId;
+    private Long no;
+    private Reader fragment;
+    private Long fragmentLen;
+    private String memo;
+}</code></pre>
+        <p>サービス層では、文字列から <code>StringReader</code> を作成してDTOへ設定します。</p>
+        <pre><div class="code-label">サービス層（イメージ）</div><code class="language-java">String updatedDetailText = createSampleText("UPDATE_SAMPLE:", 40000);
+
+LobDetail detail = new LobDetail();
+detail.setId(insertResult.getDetailId());
+detail.setNo(1L);
+detail.setFragment(new StringReader(updatedDetailText));
+detail.setFragmentLen((long) updatedDetailText.length());
+detail.setMemo("MyBatis updated sample data");</code></pre>
+        <p>Mapper XMLでは、<code>fragment</code> の型を <code>Reader</code> として扱わせます。プロパティ型が <code>Reader</code> であれば推論可能ですが、意図を明確にするなら <code>javaType</code> を明示します。</p>
+        <pre><div class="code-label">LobMapper.xml（イメージ）</div><code class="language-xml">#{fragment,jdbcType=CLOB,javaType=java.io.Reader}</code></pre>
+        <p>この場合、MyBatisは <code>Reader</code> 用のCLOBハンドラである <code>ClobReaderTypeHandler</code> を利用する経路になります。</p>
+        <div class="callout warn">
+          <div class="label">⚠️ Readerはストリームである</div>
+          <p><code>Reader</code> は値そのものではなく、値を読み出すためのストリームです。ストリームは基本的に現在位置を持つため、一度読み進めると同じインスタンスをそのまま再利用できません。再度同じ内容を読みたい場合は、新しい <code>StringReader</code> を作り直す、またはストリームをリセット可能にして明示的に戻す、といった管理が必要になります。</p>
+        </div>
+        <p>そのため、<code>Reader</code> をDTOのフィールドにすると、DTOが「値の入れ物」として扱いにくくなります。ログ出力、テストでの値比較、レスポンス検証、同じ値を複数回使う処理では、<code>String</code> のように中身を直接保持している型のほうが扱いやすいです。</p>
+        <p>今回のアプリでは、<code>fragment</code> はサービス層・テスト・レスポンス確認で文字列として扱うほうが自然です。問題はJava側の表現型ではなく、Oracle JDBCへのバインドAPI選択にありました。そのため、モデルを <code>Reader</code> に寄せるのではなく、<code>String</code> のままOracle向けTypeHandlerでバインド方法だけを変更しました。</p>
+      </section>
+
+      <!-- 検証結果 -->
+      <section id="verify">
+        <h2><span class="num">11</span>検証結果</h2>
+        <p>Oracle起動済みの環境で以下のテストが成功することを確認しています。</p>
+        <pre><div class="code-label">PowerShell</div><code class="language-powershell">.\mvnw -Dtest=MyBatisLobControllerTest test</code></pre>
+        <p>確認結果は以下です。</p>
+        <div class="callout ok">
+          <div class="label">✅ テスト結果</div>
+          <p style="font-family:var(--font-mono);font-size:14px">Tests run: 2, Failures: 0, Errors: 0</p>
+        </div>
+      </section>
+
+      <!-- まとめ -->
+      <section id="summary">
+        <h2><span class="num">12</span>まとめ</h2>
+        <p>今回の問題は、Mapper XML上の <code>jdbcType=CLOB</code> 指定が不足していた問題ではありません。MyBatisはCLOB指定を認識し、標準の <code>ClobTypeHandler</code> を選択していました。</p>
+        <p>しかし、標準 <code>ClobTypeHandler</code> は <code>setCharacterStream</code> を使うため、Oracle JDBCではCLOB連結式のバインド変数がLONG系として解釈されるケースがありました。そこでOracle JDBCの場合だけ <code>setStringForClob</code> を使う独自TypeHandlerを追加し、問題のSQLパラメータに局所適用しました。</p>
+        <h3>最終的な整理</h3>
+        <div class="summary-grid">
+          <div class="row"><div class="k">MyBatis上の型指定</div><div class="v"><code>String</code> + <code>jdbcType=CLOB</code></div></div>
+          <div class="row"><div class="k">修正前のTypeHandler</div><div class="v"><code>ClobTypeHandler</code></div></div>
+          <div class="row"><div class="k">修正前のJDBC API</div><div class="v"><code>setCharacterStream</code></div></div>
+          <div class="row"><div class="k">Oracle側の誤解釈</div><div class="v">CLOBではなくLONG系としてbind</div></div>
+          <div class="row"><div class="k">発生エラー</div><div class="v"><code>ORA-01461</code></div></div>
+          <div class="row"><div class="k">修正後のTypeHandler</div><div class="v"><code>OracleClobStringTypeHandler</code></div></div>
+          <div class="row"><div class="k">修正後のOracle向けJDBC API</div><div class="v"><code>OraclePreparedStatement#setStringForClob</code></div></div>
+          <div class="row"><div class="k">適用範囲</div><div class="v"><code>LobMapper.xml</code> の <code>updateDetail.fragment</code> に局所適用</div></div>
+        </div>
+      </section>
+
+      <footer>
+        MyBatis CLOBバインド問題の整理 — generated from <code>docs/mybatis-clob-binding.md</code>
+      </footer>
+    </main>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+  <script>
+    // syntax highlight
+    document.querySelectorAll('pre code[class^="language-"]').forEach((el) => {
+      window.hljs && hljs.highlightElement(el);
+    });
+
+    // mermaid: dark/light 対応。pan-zoom のため useMaxWidth は false にする
+    const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: dark ? 'dark' : 'neutral',
+      sequence: { useMaxWidth: false, wrap: true }
+    });
+
+    (async () => {
+      // Mermaid を描画してから pan-zoom を適用
+      await mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
+
+      document.querySelectorAll('.diagram').forEach((diagram) => {
+        const svg = diagram.querySelector('.mermaid svg');
+        const viewport = diagram.querySelector('.mermaid-viewport');
+        if (!svg || !viewport) return;
+
+        svg.style.maxWidth = 'none';
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+
+        const pz = svgPanZoom(svg, {
+          zoomEnabled: true,
+          panEnabled: true,
+          controlIcons: false,
+          fit: true,
+          center: true,
+          minZoom: 0.2,
+          maxZoom: 12,
+          zoomScaleSensitivity: 0.3,
+          dblClickZoomEnabled: true
+        });
+
+        // 枠リサイズ・ウィンドウ変化に追従
+        if (window.ResizeObserver) {
+          const ro = new ResizeObserver(() => { pz.resize(); pz.fit(); pz.center(); });
+          ro.observe(viewport);
+        }
+
+        // ツールバー
+        diagram.querySelectorAll('[data-action]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const a = btn.dataset.action;
+            if (a === 'in') pz.zoomBy(1.3);
+            else if (a === 'out') pz.zoomBy(1 / 1.3);
+            else if (a === 'reset') { pz.resetZoom(); pz.fit(); pz.center(); }
+          });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
