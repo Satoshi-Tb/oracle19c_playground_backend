@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyBatis CLOBバインド問題 — ORA-01461 解決記録</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github.min.css"
+      media="(prefers-color-scheme: light)"
+      integrity="sha384-eFTL69TLRZTkNfYZOLM+G04821K1qZao/4QLJbet1pP4tcF+fdXq/9CdqAbWRl/L"
+      crossorigin="anonymous">
+<link rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css"
+      media="(prefers-color-scheme: dark)"
+      integrity="sha384-wH75j6z1lH97ZOpMOInqhgKzFkAInZPPSPlZpYKYTOqsaizPvhQZmAtLcPKXpLyH"
+      crossorigin="anonymous">
+<style>
+/* ===== THEME ===== */
+:root {
+  --font-body: 'Noto Sans JP', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+  --bg: #f3f6fc;
+  --surface: #ffffff;
+  --surface-2: #eaf0fb;
+  --border: rgba(20, 60, 140, 0.1);
+  --border-strong: rgba(20, 60, 140, 0.22);
+  --text: #0d1b40;
+  --text-dim: #4a5c80;
+
+  --accent: #1a52cc;
+  --accent-dim: rgba(26, 82, 204, 0.1);
+  --accent-bright: #2563eb;
+
+  --amber: #b45309;
+  --amber-dim: rgba(180, 83, 9, 0.1);
+  --amber-border: rgba(180, 83, 9, 0.35);
+
+  --danger: #b91c1c;
+  --danger-dim: rgba(185, 28, 28, 0.1);
+  --danger-border: rgba(185, 28, 28, 0.3);
+
+  --success: #065f46;
+  --success-dim: rgba(6, 95, 70, 0.1);
+  --success-border: rgba(6, 95, 70, 0.3);
+
+  --nav-w: 220px;
+  --header-h: 64px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1526;
+    --surface: #12243d;
+    --surface-2: #1b3156;
+    --border: rgba(100, 155, 255, 0.1);
+    --border-strong: rgba(100, 155, 255, 0.22);
+    --text: #c9deff;
+    --text-dim: #6a93c8;
+
+    --accent: #60a5fa;
+    --accent-dim: rgba(96, 165, 250, 0.14);
+    --accent-bright: #93c5fd;
+
+    --amber: #fbbf24;
+    --amber-dim: rgba(251, 191, 36, 0.14);
+    --amber-border: rgba(251, 191, 36, 0.35);
+
+    --danger: #f87171;
+    --danger-dim: rgba(248, 113, 113, 0.14);
+    --danger-border: rgba(248, 113, 113, 0.3);
+
+    --success: #34d399;
+    --success-dim: rgba(52, 211, 153, 0.14);
+    --success-border: rgba(52, 211, 153, 0.3);
+  }
+}
+
+/* ===== RESET ===== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--text);
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px);
+  background-size: 28px 28px;
+  min-height: 100vh;
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate { animation: fadeUp 0.45s ease-out both; animation-delay: calc(var(--i, 0) * 0.07s); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* ===== LAYOUT ===== */
+.page-layout {
+  display: grid;
+  grid-template-columns: var(--nav-w) 1fr;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+}
+
+/* ===== PAGE HEADER ===== */
+.page-header {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 28px 40px 24px;
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.25;
+  margin-bottom: 4px;
+}
+
+.page-header .subtitle {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.header-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.badge-error { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger-border); }
+.badge-fix   { background: var(--success-dim); color: var(--success); border: 1px solid var(--success-border); }
+
+/* ===== SIDEBAR NAV ===== */
+.sidebar-nav {
+  grid-column: 1;
+  grid-row: 2;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 24px 0 40px;
+}
+
+.nav-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 0 20px 8px;
+  opacity: 0.7;
+}
+
+.sidebar-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 20px;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.sidebar-nav a:hover,
+.sidebar-nav a.active {
+  color: var(--accent);
+  background: var(--accent-dim);
+  border-left-color: var(--accent);
+}
+
+.nav-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ===== MAIN CONTENT ===== */
+.main-content {
+  grid-column: 2;
+  grid-row: 2;
+  padding: 40px 48px 80px;
+  min-width: 0;
+  max-width: 960px;
+}
+
+/* ===== SECTION ===== */
+section {
+  margin-bottom: 64px;
+  scroll-margin-top: 24px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.section-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.section-header h2 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+/* ===== CARD ===== */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+
+.card p {
+  font-size: 14px;
+  color: var(--text-dim);
+  line-height: 1.8;
+}
+
+.card p + p { margin-top: 12px; }
+
+/* ===== CALLOUT ===== */
+.callout {
+  border-radius: 8px;
+  padding: 14px 18px;
+  font-size: 14px;
+  line-height: 1.7;
+  margin-bottom: 16px;
+  border: 1px solid;
+}
+.callout-error  { background: var(--danger-dim);  border-color: var(--danger-border);  color: var(--danger); }
+.callout-warn   { background: var(--amber-dim);   border-color: var(--amber-border);   color: var(--amber); }
+.callout-info   { background: var(--accent-dim);  border-color: var(--border-strong);  color: var(--text-dim); }
+.callout-success{ background: var(--success-dim); border-color: var(--success-border); color: var(--success); }
+.callout strong { font-weight: 700; }
+.callout code   { font-family: var(--font-mono); font-size: 12px; }
+
+/* ===== CODE BLOCKS ===== */
+pre, .hljs-wrap {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+
+pre code.hljs {
+  padding: 18px 20px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  border-radius: 8px;
+}
+
+.code-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 8px 8px 0 0;
+  display: block;
+}
+
+/* inline code */
+:not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--accent-dim);
+  color: var(--accent-bright);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ===== FILE CARDS ===== */
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.file-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.file-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.file-card .file-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  word-break: break-all;
+}
+
+.file-card .file-desc {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+/* ===== STEP LIST ===== */
+.step-list {
+  counter-reset: step;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.step-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  counter-increment: step;
+}
+
+.step-list li::before {
+  content: counter(step);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.step-list li.highlight {
+  border-color: var(--amber-border);
+  background: var(--amber-dim);
+}
+
+/* ===== DIAGRAM SHELL ===== */
+.diagram-shell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.diagram-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 10px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.diagram-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diagram-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.label-before { background: var(--danger-dim); color: var(--danger); }
+.label-after  { background: var(--success-dim); color: var(--success); }
+
+.diagram-btns {
+  display: flex;
+  gap: 4px;
+}
+
+.diag-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.diag-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.diagram-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--border);
+  opacity: 0.7;
+}
+
+.diagram-body { transition: height 0.25s ease; }
+
+/* Mermaid wrap */
+.mermaid-wrap {
+  position: relative;
+  padding: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 360px;
+}
+
+.mermaid-viewport {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  min-height: 320px;
+}
+
+.mermaid-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.mermaid-wrap { cursor: grab; }
+.mermaid-wrap.is-panning { cursor: grabbing; user-select: none; }
+
+/* zoom controls */
+.zoom-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 2px;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.zoom-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.zoom-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.zoom-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 0 6px;
+  white-space: nowrap;
+  align-self: center;
+}
+
+/* Mermaid SVG overrides */
+.mermaid .actor            { stroke-width: 1.5px !important; }
+.mermaid .messageText      { font-family: var(--font-mono) !important; font-size: 12px !important; }
+.mermaid .loopText,
+.mermaid .labelText        { font-family: var(--font-body) !important; font-size: 12px !important; }
+.mermaid .noteText         { font-family: var(--font-body) !important; font-size: 12px !important; }
+
+/* ===== TABLE ===== */
+.table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: var(--surface);
+}
+
+thead th {
+  background: var(--surface-2);
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  line-height: 1.6;
+}
+
+tbody tr:last-child td { border-bottom: none; }
+
+tbody tr:hover td { background: var(--accent-dim); }
+
+.status-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status-dot::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-ok   { color: var(--success); }
+.status-ok::before { background: var(--success); }
+.status-warn { color: var(--amber); }
+.status-warn::before { background: var(--amber); }
+.status-err  { color: var(--danger); }
+.status-err::before { background: var(--danger); }
+
+/* ===== REASON CARDS ===== */
+.reason-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 22px;
+  margin-bottom: 14px;
+}
+
+.reason-card h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reason-card h3::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.reason-card ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reason-card ul li {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  padding-left: 16px;
+  position: relative;
+  line-height: 1.65;
+}
+
+.reason-card ul li::before {
+  content: '—';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+/* ===== SUMMARY TABLE ===== */
+.summary-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.summary-grid .sg-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+.summary-grid .sg-value {
+  font-size: 13px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.summary-grid .sg-label:last-of-type,
+.summary-grid .sg-value:last-child {
+  border-bottom: none;
+}
+
+/* ===== MODAL ===== */
+#modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0, 0, 0, 0.82);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+#modal.open { display: flex; }
+
+.modal-inner {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  max-height: 90vh;
+  background: var(--surface);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.modal-close:hover { background: var(--danger-dim); color: var(--danger); }
+
+.modal-body {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-body svg {
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 900px) {
+  .page-layout {
+    grid-template-columns: 1fr;
+  }
+  .sidebar-nav {
+    position: static;
+    height: auto;
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+    scrollbar-width: none;
+  }
+  .sidebar-nav::-webkit-scrollbar { display: none; }
+  .nav-label { display: none; }
+  .sidebar-nav a {
+    white-space: nowrap;
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    padding: 6px 14px;
+    font-size: 12px;
+  }
+  .sidebar-nav a:hover,
+  .sidebar-nav a.active {
+    border-left-color: transparent;
+    border-bottom-color: var(--accent);
+  }
+  .main-content {
+    grid-column: 1;
+    grid-row: 3;
+    padding: 24px 20px 60px;
+  }
+  .page-header { grid-column: 1; }
+  .page-header h1 { font-size: 20px; }
+}
+</style>
+</head>
+<body>
+
+<div class="page-layout">
+
+  <!-- ===== PAGE HEADER ===== -->
+  <header class="page-header animate" style="--i:0">
+    <h1>
+      <span class="header-badge badge-error">ORA-01461</span>
+      MyBatis CLOBバインド問題
+    </h1>
+    <p class="subtitle">
+      <span class="header-badge badge-fix">RESOLVED</span>
+      Oracle JDBC + MyBatis ClobTypeHandler — 発生原因と OracleClobStringTypeHandler による解決
+    </p>
+  </header>
+
+  <!-- ===== SIDEBAR NAV ===== -->
+  <nav class="sidebar-nav animate" style="--i:1" aria-label="目次">
+    <p class="nav-label">目次</p>
+    <a href="#overview"><span class="nav-num">1</span>概要</a>
+    <a href="#files"><span class="nav-num">2</span>関係する実装</a>
+    <a href="#flow"><span class="nav-num">3</span>パラメータ解釈順番</a>
+    <a href="#before"><span class="nav-num">4</span>修正前の挙動</a>
+    <a href="#solution"><span class="nav-num">5</span>解決方法</a>
+    <a href="#decisions"><span class="nav-num">6</span>設計判断の理由</a>
+    <a href="#summary"><span class="nav-num">7</span>検証・まとめ</a>
+  </nav>
+
+  <!-- ===== MAIN ===== -->
+  <main class="main-content">
+
+    <!-- 1. 概要 -->
+    <section id="overview">
+      <div class="section-header animate" style="--i:2">
+        <span class="section-num">1</span>
+        <h2>概要</h2>
+      </div>
+
+      <div class="card animate" style="--i:3">
+        <p>
+          MyBatisで <code>jdbcType=CLOB</code> を指定していたにもかかわらず、Oracle JDBC側でバインド変数が
+          CLOBではなくLONG系として解釈され、CLOB連結のUPDATEでエラーになりました。
+          問題が発生したSQLは <code>LobMapper.xml</code> の <code>updateDetail</code> です。
+        </p>
+        <p>
+          更新時の <code>fragment</code> は <code>MyBatisLobService</code> で40,000文字の文字列として生成されます。
+          期待した状態は「<code>fragment</code> をCLOBとしてバインドする」ことでしたが、
+          MyBatis標準の <code>ClobTypeHandler</code> が使用するJDBC APIとOracle JDBCの型解釈の組み合わせにより、
+          実際にはLONG系として扱われました。
+        </p>
+      </div>
+
+      <div class="animate" style="--i:4">
+        <span class="code-label">LobMapper.xml — 問題のSQL断片</span>
+        <pre><code class="language-xml">FRAGMENT = FRAGMENT || TO_CLOB('=&gt;') ||
+    #{fragment,jdbcType=CLOB}</code></pre>
+      </div>
+
+      <div class="callout callout-error animate" style="--i:5">
+        <strong>発生エラー:</strong> <code>ORA-01461: LONG値はLONG列にのみバインドできます</code><br>
+        原因はMyBatis標準 <code>ClobTypeHandler</code> が <code>PreparedStatement#setCharacterStream</code> を使用するため、
+        Oracle JDBCがCLOB連結式の <code>?</code> をLONG系として解釈したことです。
+      </div>
+
+      <div class="callout callout-info animate" style="--i:6">
+        重要なポイント: <code>jdbcType=CLOB</code> を指定した時点でOracleにCLOBとして渡ることが保証されるわけではありません。
+        MyBatisはその指定をもとに <strong>TypeHandlerを選択</strong> しますが、実際にどのJDBC APIで値を設定するかは
+        TypeHandlerの実装に依存します。
+      </div>
+    </section>
+
+    <!-- 2. 関係する実装 -->
+    <section id="files">
+      <div class="section-header animate" style="--i:0">
+        <span class="section-num">2</span>
+        <h2>関係する実装</h2>
+      </div>
+
+      <div class="file-grid animate" style="--i:1">
+        <div class="file-card">
+          <div class="file-path">src/main/resources/mapper/LobMapper.xml</div>
+          <div class="file-desc">問題のSQL断片を含むMapperXML。<code>updateDetail</code> の <code>fragment</code> パラメータに独自TypeHandlerを局所適用。</div>
+        </div>
+        <div class="file-card">
+          <div class="file-path">src/main/java/com/example/dbperf/service/MyBatisLobService.java</div>
+          <div class="file-desc">40,000文字の文字列を生成してMapper経由でCLOB連結UPDATEを実行するサービス層。</div>
+        </div>
+        <div class="file-card">
+          <div class="file-path">src/main/java/com/example/dbperf/typehandler/OracleClobStringTypeHandler.java</div>
+          <div class="file-desc">追加した独自TypeHandler。Oracle JDBCの場合のみ <code>setStringForClob</code> を使用し、それ以外は標準実装に委譲。</div>
+        </div>
+        <div class="file-card">
+          <div class="file-path">src/main/resources/application.properties</div>
+          <div class="file-desc">全体適用オプション（コメントアウト）。<code>mybatis.type-handlers-package</code> でパッケージスキャン登録が可能。</div>
+        </div>
+      </div>
+
+      <div class="callout callout-warn animate" style="--i:2">
+        現在の対応では、問題が確認された <code>updateDetail</code> の <code>fragment</code> <strong>だけ</strong>に独自TypeHandlerを局所適用しています。<br>
+        <code>#{fragment,jdbcType=CLOB,typeHandler=com.example.dbperf.typehandler.OracleClobStringTypeHandler}</code>
+      </div>
+    </section>
+
+    <!-- 3. パラメータ解釈順番 -->
+    <section id="flow">
+      <div class="section-header animate" style="--i:0">
+        <span class="section-num">3</span>
+        <h2>MyBatisがパラメータを解釈する順番</h2>
+      </div>
+
+      <div class="card animate" style="--i:1">
+        <p>Mapper XMLの <code>#{...}</code> はそのままJDBCに渡されるわけではありません。実行前に <code>ParameterMapping</code> として解析され、実行時に <code>TypeHandler</code> を経由して <code>PreparedStatement</code> に値が設定されます。</p>
+      </div>
+
+      <ol class="step-list animate" style="--i:2">
+        <li>Mapper XMLの <code>#{fragment,jdbcType=CLOB}</code> を解析する</li>
+        <li><code>fragment</code> のJava型を確認する → <code>String</code></li>
+        <li>XMLで指定されたJDBC型を確認する → <code>CLOB</code></li>
+        <li><code>typeHandler</code> が明示指定されていなければ、Java型とJDBC型から標準TypeHandlerを選択する</li>
+        <li><code>String</code> + <code>JdbcType.CLOB</code> の組み合わせでは標準の <strong>ClobTypeHandler</strong> が使用される</li>
+        <li>実行時に <code>DefaultParameterHandler</code> がSQLパラメータを順番に処理する</li>
+        <li>各パラメータについて、選択済みのTypeHandlerが <code>PreparedStatement</code> に値を設定する</li>
+        <li class="highlight">最終的なバインド型は、呼び出されたJDBC APIをもとに <strong>JDBCドライバが解釈</strong> する ← ここで問題が発生</li>
+      </ol>
+    </section>
+
+    <!-- 4. 修正前の挙動 -->
+    <section id="before">
+      <div class="section-header animate" style="--i:0">
+        <span class="section-num">4</span>
+        <h2>修正前の挙動</h2>
+      </div>
+
+      <div class="card animate" style="--i:1">
+        <p>
+          修正前は <code>String</code> + <code>jdbcType=CLOB</code> に対してMyBatis標準の <code>ClobTypeHandler</code> が選択されていました。
+          このハンドラは <code>PreparedStatement#setCharacterStream</code> を使用しますが、Oracle JDBCでは
+          CLOB連結式の <code>?</code> がCLOBとして確定せず、LONG系として解釈されてエラーになりました。
+        </p>
+      </div>
+
+      <div class="animate" style="--i:2">
+        <span class="code-label">MyBatis 標準 ClobTypeHandler（該当箇所抜粋）</span>
+        <pre><code class="language-java">@Override
+public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType)
+    throws SQLException {
+  StringReader reader = new StringReader(parameter);
+  ps.setCharacterStream(i, reader, parameter.length());
+}</code></pre>
+      </div>
+
+      <div class="callout callout-warn animate" style="--i:3">
+        <strong>なぜ setCharacterStream がLONG系になるのか:</strong>
+        <code>setCharacterStream</code> はJDBC標準APIで文字ストリームを渡しますが、Oracle JDBCでは
+        SQL式や値の長さによってLONG系として扱われるケースがあります。
+        今回の <code>FRAGMENT || TO_CLOB('=&gt;') || ?</code> という連結式で <code>?</code> がCLOBとして確定しませんでした。
+      </div>
+
+      <!-- Before Diagram -->
+      <div class="diagram-shell animate" style="--i:4" id="diag-before">
+        <div class="diagram-header">
+          <div class="diagram-title">
+            <span class="diagram-label label-before">修正前</span>
+            ClobTypeHandler → setCharacterStream → ORA-01461
+          </div>
+          <div class="diagram-btns">
+            <button class="diag-btn" data-target="diag-before" data-action="minimize" title="最小化">⊟</button>
+            <button class="diag-btn" data-target="diag-before" data-action="fullscreen" title="フルスクリーン表示">⛶</button>
+          </div>
+        </div>
+        <p class="diagram-hint">Ctrl/Cmd + ホイールでズーム ／ ドラッグでパン ／ ダブルクリックでフィット</p>
+        <div class="diagram-body">
+          <div class="mermaid-wrap">
+            <div class="zoom-controls">
+              <button class="zoom-btn" data-action="zoom-in"  title="拡大">+</button>
+              <button class="zoom-btn" data-action="zoom-out" title="縮小">−</button>
+              <button class="zoom-btn" data-action="zoom-fit" title="フィット">&#8634;</button>
+              <button class="zoom-btn" data-action="zoom-one" title="等倍">1:1</button>
+              <span class="zoom-label">読込中...</span>
+            </div>
+            <div class="mermaid-viewport">
+              <div class="mermaid-canvas"></div>
+            </div>
+          </div>
+        </div>
+        <script type="text/plain" class="diagram-source">sequenceDiagram
+    autonumber
+    participant Svc as MyBatisLobService
+    participant Map as LobMapper
+    participant MB as MyBatis
+    participant Reg as TypeHandlerRegistry
+    participant Hdl as ClobTypeHandler
+    participant JDBC as Oracle JDBC
+    participant DB as Oracle Database
+    Svc->>Map: fragment String 40000文字を渡す
+    Map->>MB: jdbcType=CLOB 指定で解析
+    MB->>Reg: String と CLOB からTypeHandler解決
+    Reg-->>MB: ClobTypeHandler を選択
+    MB->>Hdl: setParameter 呼び出し
+    Hdl->>JDBC: setCharacterStream で値をセット
+    JDBC->>DB: CLOB連結UPDATE 実行
+    Note over JDBC,DB: バインド変数がLONG系として解釈される
+    DB-->>JDBC: ORA-01461 エラー発生
+    JDBC-->>MB: SQLException をスロー</script>
+      </div>
+
+      <!-- Issue breakdown table -->
+      <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;" class="animate" style="--i:5">発生箇所の整理</h3>
+      <div class="table-wrap animate" style="--i:6">
+        <table>
+          <thead>
+            <tr>
+              <th>段階</th>
+              <th>状態</th>
+              <th>問題の有無</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Mapper XML解析</strong></td>
+              <td><code>jdbcType=CLOB</code> は認識されている</td>
+              <td><span class="status-dot status-ok">問題なし</span></td>
+            </tr>
+            <tr>
+              <td><strong>TypeHandler選択</strong></td>
+              <td><code>String</code> + <code>CLOB</code> から <code>ClobTypeHandler</code> を選択</td>
+              <td><span class="status-dot status-ok">MyBatis標準動作として妥当</span></td>
+            </tr>
+            <tr>
+              <td><strong>TypeHandler実行</strong></td>
+              <td><code>setCharacterStream</code> で値を設定</td>
+              <td><span class="status-dot status-warn">OracleではLONG系解釈の余地あり</span></td>
+            </tr>
+            <tr>
+              <td><strong>Oracle実行</strong></td>
+              <td>CLOB連結式の <code>?</code> がLONG系として扱われる</td>
+              <td><span class="status-dot status-err">ORA-01461 発生</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout callout-info animate" style="--i:7">
+        「MyBatisがCLOB指定を無視した」のではなく、「CLOB指定により標準CLOBハンドラは選ばれたが、
+        その標準ハンドラのJDBC API選択がOracleの今回のSQLには合わなかった」という整理が正確です。
+      </div>
+    </section>
+
+    <!-- 5. 解決方法 -->
+    <section id="solution">
+      <div class="section-header animate" style="--i:0">
+        <span class="section-num">5</span>
+        <h2>解決方法</h2>
+      </div>
+
+      <div class="card animate" style="--i:1">
+        <p>
+          Oracle JDBCの場合だけ <code>OraclePreparedStatement#setStringForClob</code> を使用する独自TypeHandlerを追加しました。
+          <code>ClobTypeHandler</code> を継承し、書き込み時の <code>setNonNullParameter</code> だけをオーバーライドしています。
+          Oracle JDBCとしてunwrapできない場合は、標準の <code>ClobTypeHandler</code> に委譲します。
+        </p>
+      </div>
+
+      <div class="animate" style="--i:2">
+        <span class="code-label">OracleClobStringTypeHandler.java</span>
+        <pre><code class="language-java">@MappedTypes(String.class)
+@MappedJdbcTypes(JdbcType.CLOB)
+public class OracleClobStringTypeHandler extends ClobTypeHandler {
+
+    @Override
+    public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType)
+            throws SQLException {
+        if (ps.isWrapperFor(OraclePreparedStatement.class)) {
+            ps.unwrap(OraclePreparedStatement.class).setStringForClob(i, parameter);
+            return;
+        }
+
+        super.setNonNullParameter(ps, i, parameter, jdbcType);
+    }
+}</code></pre>
+      </div>
+
+      <div class="animate" style="--i:3">
+        <span class="code-label">LobMapper.xml — 修正後の局所適用</span>
+        <pre><code class="language-xml">#{fragment,jdbcType=CLOB,typeHandler=com.example.dbperf.typehandler.OracleClobStringTypeHandler}</code></pre>
+      </div>
+
+      <!-- After Diagram -->
+      <div class="diagram-shell animate" style="--i:4" id="diag-after">
+        <div class="diagram-header">
+          <div class="diagram-title">
+            <span class="diagram-label label-after">修正後</span>
+            OracleClobStringTypeHandler → setStringForClob → 成功
+          </div>
+          <div class="diagram-btns">
+            <button class="diag-btn" data-target="diag-after" data-action="minimize" title="最小化">⊟</button>
+            <button class="diag-btn" data-target="diag-after" data-action="fullscreen" title="フルスクリーン表示">⛶</button>
+          </div>
+        </div>
+        <p class="diagram-hint">Ctrl/Cmd + ホイールでズーム ／ ドラッグでパン ／ ダブルクリックでフィット</p>
+        <div class="diagram-body">
+          <div class="mermaid-wrap">
+            <div class="zoom-controls">
+              <button class="zoom-btn" data-action="zoom-in"  title="拡大">+</button>
+              <button class="zoom-btn" data-action="zoom-out" title="縮小">−</button>
+              <button class="zoom-btn" data-action="zoom-fit" title="フィット">&#8634;</button>
+              <button class="zoom-btn" data-action="zoom-one" title="等倍">1:1</button>
+              <span class="zoom-label">読込中...</span>
+            </div>
+            <div class="mermaid-viewport">
+              <div class="mermaid-canvas"></div>
+            </div>
+          </div>
+        </div>
+        <script type="text/plain" class="diagram-source">sequenceDiagram
+    autonumber
+    participant Svc as MyBatisLobService
+    participant Map as LobMapper
+    participant Cst as OracleClobStringTypeHandler
+    participant Wrp as PreparedStatement
+    participant OPS as OraclePreparedStatement
+    participant DB as Oracle Database
+    Svc->>Map: fragment String 40000文字を渡す
+    Map->>Cst: typeHandler 明示指定 CLOB バインド
+    Cst->>Wrp: isWrapperFor 確認
+
+    alt Oracle JDBC として unwrap 可能
+        Wrp-->>Cst: true
+        Cst->>Wrp: unwrap 実行
+        Wrp-->>Cst: OraclePreparedStatement 返却
+        Cst->>OPS: setStringForClob でバインド
+        OPS->>DB: CLOB連結UPDATE 実行
+        DB-->>OPS: UPDATE 成功
+    else unwrap 不可
+        Wrp-->>Cst: false
+        Cst->>Cst: 標準 ClobTypeHandler に委譲
+    end</script>
+      </div>
+    </section>
+
+    <!-- 6. 設計判断の理由 -->
+    <section id="decisions">
+      <div class="section-header animate" style="--i:0">
+        <span class="section-num">6</span>
+        <h2>設計判断の理由</h2>
+      </div>
+
+      <div class="reason-card animate" style="--i:1">
+        <h3>局所適用にした理由</h3>
+        <ul>
+          <li>問題が確認されたのはCLOB連結式を含む <code>updateDetail</code> のみ。CLOB列への通常INSERTや単純UPDATEでは発生していない。</li>
+          <li>影響範囲を最小化するため、Mapper XMLで局所的にTypeHandlerを指定している。</li>
+          <li>全体適用する場合は <code>application.properties</code> の <code>mybatis.type-handlers-package</code> で登録可能だが、<code>String</code> + <code>CLOB</code> の全箇所に影響するため現状は局所適用を継続。</li>
+        </ul>
+      </div>
+
+      <div class="reason-card animate" style="--i:2">
+        <h3>TypeHandlerを全て一から自作しなかった理由</h3>
+        <ul>
+          <li>差し替えたかった処理は、CLOB値を書き込むときの <strong>バインドAPI選択だけ</strong>。</li>
+          <li><code>ClobTypeHandler</code> を継承し <code>setNonNullParameter</code> だけをオーバーライドすることで、読み取り処理や非Oracle環境の標準処理を再利用できる。</li>
+          <li>Oracle JDBCとしてunwrapできる場合のみ問題のAPIを差し替え、できない場合は標準実装に委譲するため、独自実装範囲が明確で小さい。</li>
+          <li><code>@MappedTypes</code> と <code>@MappedJdbcTypes</code> はパッケージスキャン登録時のメタ情報。Mapper XMLで明示指定している現状ではそちらが優先される。</li>
+        </ul>
+      </div>
+
+      <div class="reason-card animate" style="--i:3">
+        <h3>Reader型へ変更しなかった理由</h3>
+        <ul>
+          <li><code>ClobReaderTypeHandler</code> を使う場合、DTOの <code>fragment</code> フィールドを <code>String</code> から <code>Reader</code> に変更する必要がある。</li>
+          <li><code>Reader</code> はストリームであり現在位置を持つため、一度読み進めると同じインスタンスを再利用できない。</li>
+          <li>DTOが「値の入れ物」として扱いにくくなり、ログ出力・テスト値比較・レスポンス検証などで不便が生じる。</li>
+          <li>問題はJava側の表現型ではなく <strong>Oracle JDBCへのバインドAPI選択</strong> にあるため、モデルを変更せずTypeHandlerでバインド方法だけを変更した。</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 7. 検証・まとめ -->
+    <section id="summary">
+      <div class="section-header animate" style="--i:0">
+        <span class="section-num">7</span>
+        <h2>検証・まとめ</h2>
+      </div>
+
+      <div class="animate" style="--i:1">
+        <span class="code-label">検証コマンド (PowerShell)</span>
+        <pre><code class="language-powershell">.\mvnw -Dtest=MyBatisLobControllerTest test</code></pre>
+      </div>
+
+      <div class="callout callout-success animate" style="--i:2">
+        <strong>確認結果:</strong> Oracle起動済みの環境で <code>Tests run: 2, Failures: 0, Errors: 0</code> が成功することを確認済み。
+      </div>
+
+      <h3 style="font-size:15px;font-weight:600;margin:20px 0 12px;" class="animate" style="--i:3">修正内容の整理</h3>
+      <div class="summary-grid animate" style="--i:4">
+        <span class="sg-label">MyBatis上の型指定</span>
+        <span class="sg-value"><code>String</code> + <code>jdbcType=CLOB</code></span>
+
+        <span class="sg-label">修正前 TypeHandler</span>
+        <span class="sg-value"><code>ClobTypeHandler</code>（MyBatis標準）</span>
+
+        <span class="sg-label">修正前 JDBC API</span>
+        <span class="sg-value"><code>setCharacterStream</code></span>
+
+        <span class="sg-label">Oracle側の誤解釈</span>
+        <span class="sg-value">CLOBではなく<span style="color:var(--danger);font-weight:600;">LONG系としてbind</span></span>
+
+        <span class="sg-label">発生エラー</span>
+        <span class="sg-value"><span class="header-badge badge-error">ORA-01461</span></span>
+
+        <span class="sg-label">修正後 TypeHandler</span>
+        <span class="sg-value"><code>OracleClobStringTypeHandler</code>（独自）</span>
+
+        <span class="sg-label">修正後 JDBC API</span>
+        <span class="sg-value"><code>OraclePreparedStatement#setStringForClob</code></span>
+
+        <span class="sg-label">適用範囲</span>
+        <span class="sg-value"><code>LobMapper.xml</code> の <code>updateDetail.fragment</code> に局所適用</span>
+      </div>
+    </section>
+
+  </main><!-- /main-content -->
+</div><!-- /page-layout -->
+
+<!-- ===== FULLSCREEN MODAL ===== -->
+<div id="modal" role="dialog" aria-modal="true" aria-label="シーケンス図 フルスクリーン">
+  <div class="modal-inner">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">シーケンス図</span>
+      <button class="modal-close" id="modal-close" title="閉じる">&#x2715;</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ===== CDN SCRIPTS ===== -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
+        integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"
+        integrity="sha384-RH2xi4eIQ/gjtbs9fUXM68sLSi99C7ZWBRX1vDrVv6GQXRibxXLbwO2NGZB74MbU"
+        crossorigin="anonymous"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---- highlight.js ---- */
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('pre code').forEach(function (el) {
+      hljs.highlightElement(el);
+    });
+  });
+
+  /* ---- Mermaid config ---- */
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    look: 'classic',
+    themeVariables: {
+      fontFamily: "'Noto Sans JP', system-ui, sans-serif",
+      fontSize: '13px',
+      /* participants / actors */
+      actorBkg:       isDark ? '#1b3156' : '#eaf0fb',
+      actorBorder:    isDark ? '#60a5fa' : '#1a52cc',
+      actorTextColor: isDark ? '#c9deff' : '#0d1b40',
+      actorLineColor: isDark ? '#6a93c8' : '#4a5c80',
+      /* signals */
+      signalColor:     isDark ? '#6a93c8' : '#4a5c80',
+      signalTextColor: isDark ? '#c9deff' : '#0d1b40',
+      /* notes */
+      noteBkgColor:    isDark ? '#2e1a00' : '#fffbeb',
+      noteTextColor:   isDark ? '#fbbf24' : '#92400e',
+      noteBorderColor: isDark ? '#f59e0b' : '#d97706',
+      /* alt/loop labels */
+      labelBoxBkgColor:    isDark ? '#1b3156' : '#eaf0fb',
+      labelBoxBorderColor: isDark ? '#60a5fa' : '#1a52cc',
+      labelTextColor:      isDark ? '#c9deff' : '#0d1b40',
+      loopTextColor:       isDark ? '#c9deff' : '#0d1b40',
+      /* activation boxes */
+      activationBkgColor:    isDark ? '#1b3156' : '#dbeafe',
+      activationBorderColor: isDark ? '#60a5fa' : '#1a52cc',
+      /* sequence numbers */
+      sequenceNumberColor: isDark ? '#0b1526' : '#ffffff',
+      /* fallback colors */
+      primaryColor:       isDark ? '#1b3156' : '#dbeafe',
+      primaryBorderColor: isDark ? '#60a5fa' : '#1a52cc',
+      primaryTextColor:   isDark ? '#c9deff' : '#0d1b40',
+      lineColor:          isDark ? '#6a93c8' : '#4a5c80',
+    }
+  });
+
+  /* ---- Diagram zoom/pan engine ---- */
+  var CFG = {
+    fitPadding: 24,
+    minHeight: 340,
+    maxHeightPx: 900,
+    maxHeightVh: 0.82,
+    maxInitialZoom: 1.6,
+    minZoom: 0.06,
+    maxZoom: 6,
+    zoomStep: 0.15,
+    readabilityFloor: 0.55
+  };
+
+  var clamp = function (n, lo, hi) { return Math.max(lo, Math.min(hi, n)); };
+  var activeDrag = null;
+
+  window.addEventListener('mousemove', function (e) { if (activeDrag) activeDrag.onMove(e); });
+  window.addEventListener('mouseup',   function ()  { if (activeDrag) { activeDrag.onEnd(); activeDrag = null; } });
+
+  function initDiagram(shell) {
+    var wrap     = shell.querySelector('.mermaid-wrap');
+    var viewport = shell.querySelector('.mermaid-viewport');
+    var canvas   = shell.querySelector('.mermaid-canvas');
+    var source   = shell.querySelector('.diagram-source');
+    var label    = shell.querySelector('.zoom-label');
+    if (!wrap || !viewport || !canvas || !source || !label) return;
+
+    var zoom = 1, fitMode = 'contain', panX = 0, panY = 0;
+    var svgW = 0, svgH = 0;
+    var sx = 0, sy = 0, spx = 0, spy = 0;
+
+    function constrainPan() {
+      var vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      var rW = svgW * zoom, rH = svgH * zoom, pad = CFG.fitPadding;
+      panX = (rW + pad * 2 <= vpW) ? (vpW - rW) / 2 : clamp(panX, vpW - rW - pad, pad);
+      panY = (rH + pad * 2 <= vpH) ? (vpH - rH) / 2 : clamp(panY, vpH - rH - pad, pad);
+    }
+
+    function applyTransform() {
+      var svg = canvas.querySelector('svg');
+      if (!svg || !svgW) return;
+      constrainPan();
+      svg.style.width  = (svgW * zoom) + 'px';
+      svg.style.height = (svgH * zoom) + 'px';
+      canvas.style.transform = 'translate(' + panX + 'px,' + panY + 'px)';
+      label.textContent = Math.round(zoom * 100) + '% — ' + fitMode;
+    }
+
+    function canPan() {
+      var p = CFG.fitPadding;
+      return svgW * zoom + p * 2 > viewport.clientWidth || svgH * zoom + p * 2 > viewport.clientHeight;
+    }
+
+    function computeSmartFit() {
+      var vpW = viewport.clientWidth, vpH = viewport.clientHeight;
+      var aW = Math.max(80, vpW - CFG.fitPadding * 2);
+      var aH = Math.max(80, vpH - CFG.fitPadding * 2);
+      var contain = Math.min(aW / svgW, aH / svgH);
+      var z = contain, mode = 'contain';
+      if (contain < CFG.readabilityFloor) {
+        z = (svgH / svgW >= vpH / Math.max(vpW, 1)) ? aW / svgW : aH / svgH;
+        mode = 'readable';
+      }
+      return { zoom: clamp(z, CFG.minZoom, CFG.maxInitialZoom), mode: mode };
+    }
+
+    function fitDiagram() {
+      if (!svgW) return;
+      var f = computeSmartFit();
+      zoom = f.zoom; fitMode = f.mode;
+      panX = (viewport.clientWidth  - svgW * zoom) / 2;
+      panY = (viewport.clientHeight - svgH * zoom) / 2;
+      applyTransform();
+    }
+
+    function setOneToOne() {
+      zoom = clamp(1, CFG.minZoom, CFG.maxZoom); fitMode = '1:1';
+      panX = (viewport.clientWidth  - svgW) / 2;
+      panY = (viewport.clientHeight - svgH) / 2;
+      applyTransform();
+    }
+
+    function zoomAround(factor, cx, cy) {
+      var next = clamp(zoom * factor, CFG.minZoom, CFG.maxZoom);
+      var ratio = next / zoom;
+      panX = cx - ratio * (cx - panX);
+      panY = cy - ratio * (cy - panY);
+      zoom = next; fitMode = 'custom';
+      applyTransform();
+    }
+
+    function readSvgSize(svg) {
+      var w = 0, h = 0;
+      if (svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width > 0) {
+        w = svg.viewBox.baseVal.width; h = svg.viewBox.baseVal.height;
+      }
+      if (!w) { w = parseFloat(svg.getAttribute('width')) || 0; h = parseFloat(svg.getAttribute('height')) || 0; }
+      if (!w) { var b = svg.getBBox(); w = b.width; h = b.height; }
+      if (!w) { var r = svg.getBoundingClientRect(); w = r.width || 800; h = r.height || 500; }
+      if (!svg.getAttribute('viewBox')) svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      return { w: w, h: h };
+    }
+
+    function setAdaptiveHeight() {
+      if (!svgW) return;
+      var usableW = Math.max(280, wrap.getBoundingClientRect().width - 2);
+      var idealH = (svgH / svgW) * usableW + CFG.fitPadding * 2;
+      var maxVp = Math.floor(window.innerHeight * CFG.maxHeightVh);
+      var hardMax = Math.min(CFG.maxHeightPx, Math.max(CFG.minHeight + 40, maxVp));
+      wrap.style.height = Math.round(clamp(idealH, CFG.minHeight, hardMax)) + 'px';
+    }
+
+    async function render() {
+      try {
+        var code = source.textContent.trim();
+        if (!code) { label.textContent = 'Error: empty source'; return; }
+        var id = 'diag-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+        var result = await mermaid.render(id, code);
+        canvas.innerHTML = result.svg;
+        var svgNode = canvas.querySelector('svg');
+        if (!svgNode) { label.textContent = 'Error: no SVG'; return; }
+        var sz = readSvgSize(svgNode);
+        svgW = sz.w; svgH = sz.h;
+        svgNode.removeAttribute('width');
+        svgNode.removeAttribute('height');
+        svgNode.style.maxWidth = 'none';
+        svgNode.style.display = 'block';
+        setAdaptiveHeight();
+        fitDiagram();
+      } catch (err) {
+        console.error('mermaid render failed:', err);
+        label.textContent = 'Error: ' + (err.message || 'render failed');
+      }
+    }
+
+    /* zoom button actions */
+    wrap.querySelectorAll('.zoom-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var cx = viewport.clientWidth / 2, cy = viewport.clientHeight / 2;
+        var act = btn.dataset.action;
+        if (act === 'zoom-in')  zoomAround(1 + CFG.zoomStep, cx, cy);
+        if (act === 'zoom-out') zoomAround(1 / (1 + CFG.zoomStep), cx, cy);
+        if (act === 'zoom-fit') fitDiagram();
+        if (act === 'zoom-one') setOneToOne();
+      });
+    });
+
+    /* double-click to fit */
+    viewport.addEventListener('dblclick', fitDiagram);
+
+    /* ctrl/cmd + wheel to zoom, plain scroll to pan */
+    viewport.addEventListener('wheel', function (e) {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        var rect = viewport.getBoundingClientRect();
+        var factor = e.deltaY < 0 ? 1 + CFG.zoomStep : 1 / (1 + CFG.zoomStep);
+        zoomAround(factor, e.clientX - rect.left, e.clientY - rect.top);
+      } else if (canPan()) {
+        e.preventDefault();
+        panX -= e.deltaX; panY -= e.deltaY;
+        applyTransform();
+      }
+    }, { passive: false });
+
+    /* drag to pan */
+    viewport.addEventListener('mousedown', function (e) {
+      if (e.target.closest('.zoom-controls') || !canPan()) return;
+      wrap.classList.add('is-panning');
+      sx = e.clientX; sy = e.clientY; spx = panX; spy = panY;
+      e.preventDefault();
+      activeDrag = {
+        onMove: function (ev) { panX = spx + (ev.clientX - sx); panY = spy + (ev.clientY - sy); applyTransform(); },
+        onEnd:  function ()   { wrap.classList.remove('is-panning'); }
+      };
+    });
+
+    /* resize observer */
+    new ResizeObserver(function () { if (svgW) { setAdaptiveHeight(); fitDiagram(); } }).observe(wrap);
+
+    render();
+  }
+
+  /* ---- Minimize / Fullscreen controls ---- */
+  document.querySelectorAll('.diag-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var shell  = document.getElementById(btn.dataset.target);
+      var action = btn.dataset.action;
+
+      if (action === 'minimize') {
+        var body = shell.querySelector('.diagram-body');
+        var hint = shell.querySelector('.diagram-hint');
+        var isMin = body.style.display === 'none';
+        body.style.display = isMin ? '' : 'none';
+        if (hint) hint.style.display = isMin ? '' : 'none';
+        btn.textContent = isMin ? '⊟' : '⊞';
+        btn.title = isMin ? '最小化' : '展開';
+      }
+
+      if (action === 'fullscreen') {
+        var svg = shell.querySelector('svg');
+        if (!svg) return;
+        var clone = svg.cloneNode(true);
+        clone.style.width  = '';
+        clone.style.height = '';
+        clone.style.maxWidth  = '100%';
+        clone.style.maxHeight = 'calc(90vh - 80px)';
+        clone.style.display = 'block';
+        var modalBody  = document.getElementById('modal-body');
+        var modalTitle = document.getElementById('modal-title');
+        var titleEl = shell.querySelector('.diagram-title');
+        modalTitle.textContent = titleEl ? titleEl.textContent.trim() : 'シーケンス図';
+        modalBody.innerHTML = '';
+        modalBody.appendChild(clone);
+        document.getElementById('modal').classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+    });
+  });
+
+  /* ---- Modal close ---- */
+  function closeModal() {
+    document.getElementById('modal').classList.remove('open');
+    document.body.style.overflow = '';
+    document.getElementById('modal-body').innerHTML = '';
+  }
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('modal').addEventListener('click', function (e) {
+    if (e.target === this) closeModal();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+
+  /* ---- Active nav highlight ---- */
+  var sections = document.querySelectorAll('section[id]');
+  var navLinks = document.querySelectorAll('.sidebar-nav a');
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        var id = entry.target.id;
+        navLinks.forEach(function (a) {
+          a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.2 });
+  sections.forEach(function (s) { observer.observe(s); });
+
+  /* ---- Init all diagrams on load ---- */
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+  });
+
+  /* If DOMContentLoaded already fired */
+  if (document.readyState !== 'loading') {
+    document.querySelectorAll('.diagram-shell').forEach(initDiagram);
+  }
+
+})();
+</script>
+
+</body>
+</html>
