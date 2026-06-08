@@ -82,18 +82,29 @@ sequenceDiagram
 
 この時点でMyBatisは `jdbcType=CLOB` を認識しています。にもかかわらずエラーになった理由は、標準 `ClobTypeHandler` の実装がCLOB専用のOracle APIではなく、汎用的な `setCharacterStream` を使うためです。
 
+MyBatis実装のClobTypeHandler該当箇所抜粋
+
+```java
+  @Override
+  public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType)
+      throws SQLException {
+    StringReader reader = new StringReader(parameter);
+    ps.setCharacterStream(i, reader, parameter.length());
+  }
+```
+
 `setCharacterStream` は文字ストリームを渡すJDBC標準APIですが、Oracle JDBCではSQL式や値の長さによってLONG系として扱われるケースがあります。今回のCLOB連結式では、`FRAGMENT || TO_CLOB('=>') || ?` の `?` がCLOBとして確定せず、LONG系として解釈されたことがエラーの直接原因です。
 
 ## 発生箇所の整理
 
 型解釈のズレは、MyBatisの `ParameterMapping` 作成時ではなく、TypeHandlerがJDBCドライバへ値を渡す段階で発生しました。
 
-| 段階 | 状態 | 問題の有無 |
-| --- | --- | --- |
-| Mapper XML解析 | `jdbcType=CLOB` は認識されている | 問題なし |
-| TypeHandler選択 | `String` + `CLOB` から `ClobTypeHandler` を選択 | MyBatis標準動作としては妥当 |
-| TypeHandler実行 | `setCharacterStream` で値を設定 | OracleではLONG系解釈の余地がある |
-| Oracle実行 | CLOB連結式の `?` がLONG系として扱われる | ここでORA-01461 |
+| 段階            | 状態                                            | 問題の有無                       |
+| --------------- | ----------------------------------------------- | -------------------------------- |
+| Mapper XML解析  | `jdbcType=CLOB` は認識されている                | 問題なし                         |
+| TypeHandler選択 | `String` + `CLOB` から `ClobTypeHandler` を選択 | MyBatis標準動作としては妥当      |
+| TypeHandler実行 | `setCharacterStream` で値を設定                 | OracleではLONG系解釈の余地がある |
+| Oracle実行      | CLOB連結式の `?` がLONG系として扱われる         | ここでORA-01461                  |
 
 したがって、「MyBatisがCLOB指定を無視した」というより、「CLOB指定により標準CLOBハンドラは選ばれたが、その標準ハンドラのJDBC API選択がOracleの今回のSQLには合わなかった」と整理できます。
 
